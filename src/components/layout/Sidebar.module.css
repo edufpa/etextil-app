@@ -1,0 +1,88 @@
+.sidebar {
+  width: 260px;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logo {
+  height: 64px;
+  display: flex;
+  align-items: center;
+  padding: 0 1.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.logo h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+  letter-spacing: -0.5px;
+}
+
+.nav {
+  flex: 1;
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.link:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.active {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: var(--shadow-sm);
+}
+
+.active:hover {
+  background: var(--primary-hover);
+  color: var(--primary-foreground);
+}
+
+.icon {
+  flex-shrink: 0;
+}
+
+.footer {
+  padding: 1.5rem 1rem;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+.settingsBtn {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  width: 100%;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-weight: 500;
+  transition: var(--transition);
+  text-align: left;
+}
+
+.settingsBtn:hover {
+  background: var(--background);
+  color: var(--foreground);
+}

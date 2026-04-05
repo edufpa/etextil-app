@@ -1,0 +1,99 @@
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+  
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-light: #eff6ff;
+  --primary-foreground: #ffffff;
+
+  --sidebar-bg: #ffffff;
+  --sidebar-border: #e2e8f0;
+  
+  --card-bg: #ffffff;
+  --card-border: #e2e8f0;
+  
+  --success: #10b981;
+  --success-bg: #d1fae5;
+  --warning: #f59e0b;
+  --warning-bg: #fef3c7;
+  --danger: #ef4444;
+  --danger-bg: #fee2e2;
+
+  --input-bg: #ffffff;
+  --input-border: #cbd5e1;
+  --text-muted: #64748b;
+  
+  --radius: 0.75rem;
+  --transition: 0.2s ease-in-out;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f172a;
+    --foreground: #f8fafc;
+    
+    --primary: #3b82f6;
+    --primary-hover: #60a5fa;
+    --primary-light: #1e3a8a;
+    --primary-foreground: #ffffff;
+    
+    --sidebar-bg: #1e293b;
+    --sidebar-border: #334155;
+    
+    --card-bg: #1e293b;
+    --card-border: #334155;
+    
+    --success: #34d399;
+    --success-bg: #064e3b;
+    --warning: #fbbf24;
+    --warning-bg: #78350f;
+    --danger: #f87171;
+    --danger-bg: #7f1d1d;
+
+    --input-bg: #0f172a;
+    --input-border: #334155;
+    --text-muted: #94a3b8;
+    
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.5);
+  }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-family: inherit;
+}
+
+input, select, textarea {
+  font-family: inherit;
+  font-size: 1rem;
+}
+
+html {
+  color-scheme: light dark;
+}

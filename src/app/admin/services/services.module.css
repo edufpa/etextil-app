@@ -1,0 +1,115 @@
+.pageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+.newButton {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-weight: 500;
+  display: inline-flex;
+  gap: 0.5rem;
+  align-items: center;
+  transition: var(--transition);
+}
+
+.newButton:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+}
+
+.tableContainer {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.table th, .table td {
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.table th {
+  background: var(--primary-light);
+  color: var(--primary);
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: var(--background);
+}
+
+.actions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.editBtn, .deleteBtn {
+  padding: 0.25rem;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+}
+
+.editBtn:hover {
+  color: var(--primary);
+  background: var(--primary-light);
+}
+
+.deleteBtn:hover {
+  color: var(--danger);
+  background: var(--danger-bg);
+}
+
+.badge {
+  display: inline-flex;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badge.active {
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.badge.inactive {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.badge.type {
+  background: var(--background);
+  color: var(--text-muted);
+  border: 1px solid var(--sidebar-border);
+}
+
+.emptyState {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-muted);
+}

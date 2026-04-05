@@ -1,0 +1,16 @@
+.adminContainer {
+  display: flex;
+  min-height: 100vh;
+}
+
+.mainContent {
+  flex: 1;
+  margin-left: 260px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pageContent {
+  padding: 2rem;
+  flex: 1;
+}

@@ -5,6 +5,8 @@ import { notFound } from "next/navigation";
 // Definir los props para Pages en Next.js 15
 type Params = Promise<{ id: string }>;
 
+
+export const dynamic = 'force-dynamic';
 export default async function EditServicePage({ params }: { params: Params }) {
   const resolvedParams = await params;
   const idStr = resolvedParams.id;

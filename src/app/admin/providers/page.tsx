@@ -4,6 +4,8 @@ import { Plus, Pencil } from "lucide-react";
 import styles from "../services/services.module.css";
 import DeleteProviderButton from "./DeleteProviderButton";
 
+
+export const dynamic = 'force-dynamic';
 export default async function ProvidersPage() {
   const providers = await prisma.provider.findMany({
     orderBy: { createdAt: "desc" },

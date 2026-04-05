@@ -2,6 +2,8 @@ import { prisma } from "@/lib/prisma";
 import { Scissors, Truck } from "lucide-react";
 import styles from "./dashboard.module.css";
 
+
+export const dynamic = 'force-dynamic';
 export default async function DashboardPage() {
   const [totalServices, totalProviders] = await Promise.all([
     prisma.service.count({ where: { status: true } }),

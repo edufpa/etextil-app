@@ -4,6 +4,8 @@ import { Plus, Pencil, Trash2 } from "lucide-react";
 import styles from "./services.module.css";
 import DeleteServiceButton from "./DeleteServiceButton";
 
+
+export const dynamic = 'force-dynamic';
 export default async function ServicesPage() {
   const services = await prisma.service.findMany({
     orderBy: { createdAt: "desc" },

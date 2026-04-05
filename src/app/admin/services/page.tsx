@@ -37,7 +37,7 @@ export default async function ServicesPage() {
               </tr>
             </thead>
             <tbody>
-              {services.map((service) => (
+              {services.map((service: any) => (
                 <tr key={service.id}>
                   <td>#{service.id}</td>
                   <td><strong>{service.name}</strong></td>

@@ -37,7 +37,8 @@ export default async function ProvidersPage() {
               </tr>
             </thead>
             <tbody>
-              {providers.map((p) => (
+              {providers.map((p: any) => (
+
                 <tr key={p.id}>
                   <td>#{p.id}</td>
                   <td><strong>{p.businessName}</strong></td>

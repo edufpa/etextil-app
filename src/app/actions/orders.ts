@@ -72,7 +72,13 @@ export async function getOrderSummary(orderId: number) {
     include: {
       client: true,
       sizes: true,
-      services: { include: { service: true } },
+      services: {
+        include: {
+          service: true,
+          provider: true,
+          deliveries: { orderBy: { date: "desc" } },
+        },
+      },
       guides: { include: { guide: true } },
     },
   });
@@ -113,7 +119,7 @@ export async function updateOrder(
     totalQuantity: number;
     notes?: string;
     sizes: { size: string; quantity: number }[];
-    services: { service_id: number; requiredQuantity: number; notes?: string }[];
+    services: { service_id: number; requiredQuantity: number; notes?: string; provider_id?: number | null }[];
   }
 ) {
   try {
@@ -169,6 +175,7 @@ export async function updateOrder(
             service_id: s.service_id,
             requiredQuantity: s.requiredQuantity,
             notes: s.notes,
+            provider_id: s.provider_id ?? null,
           })),
         });
       }

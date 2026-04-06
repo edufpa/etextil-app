@@ -10,7 +10,7 @@ export default async function EditOrderPage({ params }: { params: Params }) {
   const orderId = parseInt(resolvedParams.id, 10);
   if (isNaN(orderId)) return notFound();
 
-  const [order, allServices, allSizes, allColors] = await Promise.all([
+  const [order, allServices, allSizes, allColors, allProviders] = await Promise.all([
     prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -21,6 +21,7 @@ export default async function EditOrderPage({ params }: { params: Params }) {
     prisma.service.findMany({ where: { status: true }, orderBy: { name: "asc" } }),
     prisma.size.findMany({ where: { status: true }, orderBy: { name: "asc" } }),
     prisma.color.findMany({ where: { status: true }, orderBy: { name: "asc" } }),
+    prisma.provider.findMany({ where: { status: true }, orderBy: { businessName: "asc" } }),
   ]);
 
   if (!order) return notFound();
@@ -32,6 +33,7 @@ export default async function EditOrderPage({ params }: { params: Params }) {
         allServices={allServices}
         allSizes={allSizes}
         allColors={allColors}
+        allProviders={allProviders}
       />
     </div>
   );

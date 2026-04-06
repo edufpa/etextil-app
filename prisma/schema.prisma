@@ -21,16 +21,18 @@ model Service {
 }
 
 model Provider {
-  id           Int      @id @default(autoincrement())
-  businessName String
-  contactName  String?
-  phone        String?
-  email        String?
-  address      String?
-  notes        String?
-  status       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                Int                @id @default(autoincrement())
+  businessName      String
+  contactName       String?
+  phone             String?
+  email             String?
+  address           String?
+  notes             String?
+  status            Boolean            @default(true)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  orderServices     OrderService[]
+  providerDeliveries ProviderDelivery[]
 }
 
 model Client {
@@ -72,15 +74,18 @@ model OrderSize {
 }
 
 model OrderService {
-  id               Int      @id @default(autoincrement())
+  id               Int                @id @default(autoincrement())
   order_id         Int
-  order            Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order            Order              @relation(fields: [order_id], references: [id], onDelete: Cascade)
   service_id       Int
-  service          Service  @relation(fields: [service_id], references: [id])
+  service          Service            @relation(fields: [service_id], references: [id])
+  provider_id      Int?
+  provider         Provider?          @relation(fields: [provider_id], references: [id])
   requiredQuantity Int
   notes            String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  deliveries       ProviderDelivery[]
 }
 
 model Guide {
@@ -106,6 +111,19 @@ model GuideDetail {
   notes             String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model ProviderDelivery {
+  id               Int          @id @default(autoincrement())
+  orderService_id  Int
+  orderService     OrderService @relation(fields: [orderService_id], references: [id], onDelete: Cascade)
+  provider_id      Int
+  provider         Provider     @relation(fields: [provider_id], references: [id])
+  date             DateTime     @default(now())
+  quantity         Int
+  notes            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 }
 
 model Size {

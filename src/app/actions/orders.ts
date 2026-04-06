@@ -103,3 +103,83 @@ export async function closeOrderManually(orderId: number) {
     return { error: "Error al cerrar el pedido" };
   }
 }
+
+export async function updateOrder(
+  orderId: number,
+  data: {
+    date: Date;
+    garment: string;
+    color: string;
+    totalQuantity: number;
+    notes?: string;
+    sizes: { size: string; quantity: number }[];
+    services: { service_id: number; requiredQuantity: number; notes?: string }[];
+  }
+) {
+  try {
+    // Validar que la suma de tallas coincide con el total
+    const sumSizes = data.sizes.reduce((acc, curr) => acc + curr.quantity, 0);
+    if (sumSizes !== data.totalQuantity) {
+      return { error: `La suma de las tallas (${sumSizes}) no coincide con la cantidad total (${data.totalQuantity}).` };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // Obtener cuánto ya se ha entregado
+      const existingGuides = await tx.guideDetail.findMany({
+        where: { order_id: orderId },
+      });
+      const totalDelivered = existingGuides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
+
+      if (data.totalQuantity < totalDelivered) {
+        throw new Error(
+          `No se puede reducir el total a ${data.totalQuantity}. Ya se han despachado ${totalDelivered} unidades.`
+        );
+      }
+
+      // Actualizar datos generales del pedido
+      await tx.order.update({
+        where: { id: orderId },
+        data: {
+          date: data.date,
+          garment: data.garment,
+          color: data.color,
+          totalQuantity: data.totalQuantity,
+          notes: data.notes,
+        },
+      });
+
+      // Reemplazar tallas (delete + insert)
+      await tx.orderSize.deleteMany({ where: { order_id: orderId } });
+      if (data.sizes.length > 0) {
+        await tx.orderSize.createMany({
+          data: data.sizes.map((s) => ({
+            order_id: orderId,
+            size: s.size,
+            quantity: s.quantity,
+          })),
+        });
+      }
+
+      // Reemplazar servicios (delete + insert)
+      await tx.orderService.deleteMany({ where: { order_id: orderId } });
+      if (data.services.length > 0) {
+        await tx.orderService.createMany({
+          data: data.services.map((s) => ({
+            order_id: orderId,
+            service_id: s.service_id,
+            requiredQuantity: s.requiredQuantity,
+            notes: s.notes,
+          })),
+        });
+      }
+    });
+
+    revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath("/admin/orders");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error updating order:", error);
+    return { error: error.message || "Error al actualizar el pedido." };
+  }
+}
+

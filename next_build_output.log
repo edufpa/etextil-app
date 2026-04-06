@@ -3,15 +3,15 @@
 
 ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
   Creating an optimized production build ...
-✓ Compiled successfully in 6.3s
+✓ Compiled successfully in 6.5s
   Running TypeScript ...
-  Finished TypeScript in 8.2s ...
+  Finished TypeScript in 7.7s ...
   Collecting page data using 7 workers ...
-  Generating static pages using 7 workers (0/10) ...
-  Generating static pages using 7 workers (2/10) 
-  Generating static pages using 7 workers (4/10) 
-  Generating static pages using 7 workers (7/10) 
-✓ Generating static pages using 7 workers (10/10) in 381ms
+  Generating static pages using 7 workers (0/12) ...
+  Generating static pages using 7 workers (3/12) 
+  Generating static pages using 7 workers (6/12) 
+  Generating static pages using 7 workers (9/12) 
+✓ Generating static pages using 7 workers (12/12) in 502ms
   Finalizing page optimization ...
 
 Route (app)
@@ -21,11 +21,15 @@ Route (app)
 ├ ƒ /admin/clients
 ├ ƒ /admin/clients/[id]
 ├ ○ /admin/clients/new
+├ ƒ /admin/colors
+├ ƒ /admin/colors/[id]
+├ ○ /admin/colors/new
 ├ ƒ /admin/guides
 ├ ƒ /admin/guides/[id]
 ├ ƒ /admin/guides/new
 ├ ƒ /admin/orders
 ├ ƒ /admin/orders/[id]
+├ ƒ /admin/orders/[id]/edit
 ├ ƒ /admin/orders/new
 ├ ƒ /admin/providers
 ├ ƒ /admin/providers/[id]
@@ -33,6 +37,9 @@ Route (app)
 ├ ƒ /admin/services
 ├ ƒ /admin/services/[id]
 ├ ○ /admin/services/new
+├ ƒ /admin/sizes
+├ ƒ /admin/sizes/[id]
+├ ○ /admin/sizes/new
 ├ ƒ /api/auth/login
 ├ ƒ /api/auth/logout
 └ ○ /login

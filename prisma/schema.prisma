@@ -101,8 +101,25 @@ model GuideDetail {
   guide             Guide    @relation(fields: [guide_id], references: [id], onDelete: Cascade)
   order_id          Int
   order             Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  size              String   @default("")
   deliveredQuantity Int
   notes             String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+}
+
+model Size {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Color {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

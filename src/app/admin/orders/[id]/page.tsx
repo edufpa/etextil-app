@@ -1,6 +1,6 @@
 import { getOrderSummary } from "@/app/actions/orders";
 import Link from "next/link";
-import { ArrowLeft, Scissors, Package, CheckCircle } from "lucide-react";
+import { ArrowLeft, Scissors, Package, CheckCircle, Pencil } from "lucide-react";
 import styles from "../../services/services.module.css";
 import { notFound } from "next/navigation";
 import CloseOrderButton from "./CloseOrderButton";
@@ -29,6 +29,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           <span className={styles.badge} style={{ fontSize: "1rem", padding: "0.5rem 1rem", background: order.status === 'CERRADO' ? '#333' : 'var(--primary)', color: 'white' }}>
             {order.status}
           </span>
+          {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
+            <Link href={`/admin/orders/${order.id}/edit`} className={styles.editBtn} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", textDecoration: "none" }}>
+              <Pencil size={16} /> Editar
+            </Link>
+          )}
           {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && order.totalDelivered >= order.totalQuantity && (
             <CloseOrderButton id={order.id} />
           )}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Scissors, Truck, Settings, Users, Package, FileText } from "lucide-react";
+import { LayoutDashboard, Scissors, Truck, Settings, Users, Package, FileText, Ruler, Palette } from "lucide-react";
 import styles from "./Sidebar.module.css";
 
 const menuItems = [
@@ -11,6 +11,8 @@ const menuItems = [
   { name: "Pedidos", path: "/admin/orders", icon: Package },
   { name: "Guías SUNAT", path: "/admin/guides", icon: FileText },
   { name: "Servicios", path: "/admin/services", icon: Scissors },
+  { name: "Tallas", path: "/admin/sizes", icon: Ruler },
+  { name: "Colores", path: "/admin/colors", icon: Palette },
   { name: "Proveedores", path: "/admin/providers", icon: Truck },
 ];
 

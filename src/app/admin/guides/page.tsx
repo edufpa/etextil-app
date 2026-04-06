@@ -8,7 +8,11 @@ export default async function GuidesPage() {
   const guides = await prisma.guide.findMany({
     orderBy: { createdAt: "desc" },
     include: {
-      details: { include: { order: true } }
+      details: {
+        include: {
+          order: { include: { client: true } }
+        }
+      }
     }
   });
 
@@ -33,16 +37,30 @@ export default async function GuidesPage() {
               <tr>
                 <th>N° Guía</th>
                 <th>Fecha</th>
-                <th>Pedidos Incluidos</th>
-                <th>Total Prendas Entregadas</th>
+                <th>Cliente(s)</th>
+                <th>Pedidos / Tallas</th>
+                <th>Total Prendas</th>
                 <th>Estado</th>
-                <th>Acciones</th>
+                <th>Ver</th>
               </tr>
             </thead>
             <tbody>
               {guides.map((g: any) => {
                 const totalDelivered = g.details.reduce((acc: number, d: any) => acc + d.deliveredQuantity, 0);
-                
+
+                // Obtener clientes únicos
+                const clientNames = [...new Set(g.details.map((d: any) => d.order.client.name))] as string[];
+
+                // Agrupar por pedido > talla
+                const byOrder = new Map<string, { orderNumber: string; sizes: Map<string, number> }>();
+                for (const d of g.details) {
+                  if (!byOrder.has(d.order.orderNumber)) {
+                    byOrder.set(d.order.orderNumber, { orderNumber: d.order.orderNumber, sizes: new Map() });
+                  }
+                  const entry = byOrder.get(d.order.orderNumber)!;
+                  entry.sizes.set(d.size, (entry.sizes.get(d.size) || 0) + d.deliveredQuantity);
+                }
+
                 return (
                   <tr key={g.id}>
                     <td><strong>{g.sunatNumber}</strong></td>
@@ -50,11 +68,23 @@ export default async function GuidesPage() {
                       {g.date.toLocaleDateString()}
                     </td>
                     <td>
-                      <div style={{ fontSize: "0.875rem", color: "var(--text-muted)", display: "flex", flexWrap: "wrap", gap: "0.25rem" }}>
-                        {g.details.map((d: any) => (
-                          <span key={d.id} style={{ background: "var(--bg-color)", padding: "0.2rem 0.5rem", borderRadius: "var(--radius)" }}>
-                            {d.order.orderNumber}
-                          </span>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                        {clientNames.map(name => (
+                          <span key={name} style={{ fontWeight: 600, fontSize: "0.9rem" }}>{name}</span>
+                        ))}
+                      </div>
+                    </td>
+                    <td>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                        {[...byOrder.values()].map(entry => (
+                          <div key={entry.orderNumber} style={{ fontSize: "0.8rem" }}>
+                            <strong style={{ color: "var(--primary)" }}>{entry.orderNumber}:</strong>{" "}
+                            {[...entry.sizes.entries()].map(([sz, qty]) => (
+                              <span key={sz} style={{ background: "var(--bg-color)", padding: "0.1rem 0.4rem", borderRadius: "4px", margin: "0 0.15rem" }}>
+                                {sz}: {qty}
+                              </span>
+                            ))}
+                          </div>
                         ))}
                       </div>
                     </td>

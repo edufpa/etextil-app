@@ -1,7 +1,7 @@
 import { getOrderSummary } from "@/app/actions/orders";
 import Link from "next/link";
 import { ArrowLeft, Scissors, Package, CheckCircle } from "lucide-react";
-import styles from "../services/services.module.css";
+import styles from "../../services/services.module.css";
 import { notFound } from "next/navigation";
 import CloseOrderButton from "./CloseOrderButton";
 

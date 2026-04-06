@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { ArrowLeft, Package } from "lucide-react";
-import styles from "../services/services.module.css";
+import styles from "../../services/services.module.css";
 import { notFound } from "next/navigation";
 
 export const dynamic = 'force-dynamic';

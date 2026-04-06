@@ -5,9 +5,11 @@ import styles from "./dashboard.module.css";
 
 export const dynamic = 'force-dynamic';
 export default async function DashboardPage() {
-  const [totalServices, totalProviders] = await Promise.all([
+  const [totalServices, totalProviders, totalClients, totalOrders] = await Promise.all([
     prisma.service.count({ where: { status: true } }),
     prisma.provider.count({ where: { status: true } }),
+    prisma.client.count({ where: { status: true } }),
+    prisma.order.count({ where: { status: { notIn: ["CERRADO", "CANCELADO"] } } }),
   ]);
 
   return (

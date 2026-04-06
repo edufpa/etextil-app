@@ -10,13 +10,14 @@ datasource db {
 }
 
 model Service {
-  id          Int      @id @default(autoincrement())
-  name        String
-  description String?
-  type        String   // 'interno', 'externo', 'mixto'
-  status      Boolean  @default(true) // true for active, false for inactive
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             Int            @id @default(autoincrement())
+  name           String
+  description    String?
+  type           String         // 'interno', 'externo', 'mixto'
+  status         Boolean        @default(true) // true for active, false for inactive
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  OrderService   OrderService[]
 }
 
 model Provider {
@@ -30,4 +31,78 @@ model Provider {
   status       Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model Client {
+  id        Int      @id @default(autoincrement())
+  name      String
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Order     Order[]
+}
+
+model Order {
+  id             Int      @id @default(autoincrement())
+  orderNumber    String   @unique
+  client_id      Int
+  client         Client   @relation(fields: [client_id], references: [id])
+  date           DateTime
+  garment        String
+  color          String
+  totalQuantity  Int
+  notes          String?
+  status         String   @default("PENDIENTE") // PENDIENTE, EN PROCESO, PARCIALMENTE ENTREGADO, ENTREGADO, CERRADO, CANCELADO
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  sizes          OrderSize[]
+  services       OrderService[]
+  guides         GuideDetail[]
+}
+
+model OrderSize {
+  id        Int      @id @default(autoincrement())
+  order_id  Int
+  order     Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  size      String
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderService {
+  id               Int      @id @default(autoincrement())
+  order_id         Int
+  order            Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  service_id       Int
+  service          Service  @relation(fields: [service_id], references: [id])
+  requiredQuantity Int
+  notes            String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Guide {
+  id           Int      @id @default(autoincrement())
+  sunatNumber  String   @unique
+  date         DateTime
+  notes        String?
+  status       String   @default("ACTIVA") // ACTIVA, ANULADA
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  details      GuideDetail[]
+}
+
+model GuideDetail {
+  id                Int      @id @default(autoincrement())
+  guide_id          Int
+  guide             Guide    @relation(fields: [guide_id], references: [id], onDelete: Cascade)
+  order_id          Int
+  order             Order    @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  deliveredQuantity Int
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

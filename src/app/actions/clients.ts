@@ -2,15 +2,16 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { getSessionCompanyId } from "@/lib/company";
 
 export async function createClient(formData: FormData) {
   try {
     const name = formData.get("name") as string;
-
     if (!name) return { error: "El nombre es obligatorio" };
+    const companyId = await getSessionCompanyId();
 
     await prisma.client.create({
-      data: { name },
+      data: { name, ...(companyId ? { company_id: companyId } : {}) },
     });
 
     revalidatePath("/admin/clients");

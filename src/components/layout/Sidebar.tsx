@@ -2,49 +2,64 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Scissors, Truck, Settings, Users, Package, FileText, Ruler, Palette } from "lucide-react";
+import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2 } from "lucide-react";
 import styles from "./Sidebar.module.css";
 
-const menuItems = [
+const mainItems = [
   { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
-  { name: "Clientes", path: "/admin/clients", icon: Users },
   { name: "Pedidos", path: "/admin/orders", icon: Package },
   { name: "Guías SUNAT", path: "/admin/guides", icon: FileText },
+  { name: "Reporte Talleres", path: "/admin/providers/reporte", icon: BarChart2 },
+  { name: "Admin General", path: "/admin/global", icon: Users },
+];
+
+const configItems = [
+  { name: "Clientes", path: "/admin/clients", icon: Users },
+  { name: "Proveedores", path: "/admin/providers", icon: Truck },
   { name: "Servicios", path: "/admin/services", icon: Scissors },
   { name: "Tallas", path: "/admin/sizes", icon: Ruler },
   { name: "Colores", path: "/admin/colors", icon: Palette },
-  { name: "Proveedores", path: "/admin/providers", icon: Truck },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+
+  const isActive = (path: string) =>
+    pathname === path || (pathname.startsWith(path) && path !== "/admin");
 
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo}>
         <h1>eTextil</h1>
       </div>
+
+      {/* Main navigation */}
       <nav className={styles.nav}>
-        {menuItems.map((item) => {
-          const isActive = pathname === item.path || (pathname.startsWith(item.path) && item.path !== "/admin");
-          return (
-            <Link
-              key={item.path}
-              href={item.path}
-              className={`${styles.link} ${isActive ? styles.active : ""}`}
-            >
-              <item.icon className={styles.icon} size={20} />
-              <span>{item.name}</span>
-            </Link>
-          );
-        })}
+        {mainItems.map((item) => (
+          <Link
+            key={item.path}
+            href={item.path}
+            className={`${styles.link} ${isActive(item.path) ? styles.active : ""}`}
+          >
+            <item.icon className={styles.icon} size={20} />
+            <span>{item.name}</span>
+          </Link>
+        ))}
       </nav>
-      
-      <div className={styles.footer}>
-        <button className={styles.settingsBtn}>
-          <Settings size={20} />
-          <span>Configuración</span>
-        </button>
+
+      {/* Config section pushed to bottom */}
+      <div className={styles.configSection}>
+        <div className={styles.configLabel}>Configuración</div>
+        {configItems.map((item) => (
+          <Link
+            key={item.path}
+            href={item.path}
+            className={`${styles.link} ${isActive(item.path) ? styles.active : ""}`}
+          >
+            <item.icon className={styles.icon} size={18} />
+            <span>{item.name}</span>
+          </Link>
+        ))}
       </div>
     </aside>
   );

@@ -2,61 +2,114 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
+import { getSessionCompanyId } from "@/lib/company";
+
+function deriveOrderStatus(currentStatus: string, totalDelivered: number, totalQuantity: number) {
+  if (currentStatus === "CERRADO" || currentStatus === "CANCELADO") return currentStatus;
+  if (totalDelivered >= totalQuantity) return "ENTREGADO";
+  if (totalDelivered > 0) return "PARCIALMENTE ENTREGADO";
+  return "PENDIENTE";
+}
+
+async function generateNextOrderNumber(tx: Prisma.TransactionClient, companyId: number | null) {
+  const where = companyId ? { company_id: companyId } : { company_id: null };
+  const orders = await tx.order.findMany({ select: { orderNumber: true }, where });
+  const maxCorrelative = orders.reduce((max, o) => {
+    const match = /^NP0*(\d+)$/i.exec(o.orderNumber || "");
+    const value = match ? Number(match[1]) : 0;
+    return value > max ? value : max;
+  }, 0);
+  return `NP${maxCorrelative + 1}`;
+}
 
 export async function createOrder(data: {
   client_id: number;
-  orderNumber: string;
   date: Date;
   garment: string;
   color: string;
   totalQuantity: number;
   notes?: string;
   sizes: { size: string; quantity: number }[];
-  services: { service_id: number; requiredQuantity: number; notes?: string }[];
+  services: {
+    service_id: number;
+    requiredQuantity: number;
+    notes?: string;
+    sizeSplit?: { size: string; quantity: number }[];
+  }[];
 }) {
   try {
-    // Validar sumatoria de tallas
     const sumSizes = data.sizes.reduce((acc, curr) => acc + curr.quantity, 0);
     if (sumSizes !== data.totalQuantity) {
       return { error: "La suma de las tallas no coincide con la cantidad total." };
     }
 
-    // Usar transacción para asegurar atomicidad
-    await prisma.$transaction(async (tx) => {
-      const order = await tx.order.create({
-        data: {
-          client_id: data.client_id,
-          orderNumber: data.orderNumber,
-          date: data.date,
-          garment: data.garment,
-          color: data.color,
-          totalQuantity: data.totalQuantity,
-          notes: data.notes,
-          status: "PENDIENTE",
-        },
-      });
+    const companyId = await getSessionCompanyId();
+    let created = false;
+    let attempts = 0;
+    while (!created && attempts < 5) {
+      attempts += 1;
+      try {
+        await prisma.$transaction(async (tx) => {
+          const orderNumber = await generateNextOrderNumber(tx, companyId);
+          const order = await tx.order.create({
+            data: {
+              client_id: data.client_id,
+              orderNumber,
+              date: data.date,
+              garment: data.garment,
+              color: data.color,
+              totalQuantity: data.totalQuantity,
+              notes: data.notes,
+              status: "PENDIENTE",
+              ...(companyId ? { company_id: companyId } : {}),
+            },
+          });
 
-      if (data.sizes.length > 0) {
-        await tx.orderSize.createMany({
-          data: data.sizes.map((s) => ({
-            order_id: order.id,
-            size: s.size,
-            quantity: s.quantity,
-          })),
-        });
-      }
+          if (data.sizes.length > 0) {
+            await tx.orderSize.createMany({
+              data: data.sizes.map((s) => ({ order_id: order.id, size: s.size, quantity: s.quantity })),
+            });
+          }
 
-      if (data.services.length > 0) {
-        await tx.orderService.createMany({
-          data: data.services.map((s) => ({
-            order_id: order.id,
-            service_id: s.service_id,
-            requiredQuantity: s.requiredQuantity,
-            notes: s.notes,
-          })),
+          if (data.services.length > 0) {
+            for (const s of data.services) {
+              // For trackBySize services, calculate requiredQuantity from sizeSplit sum
+              const reqQty =
+                s.sizeSplit && s.sizeSplit.length > 0
+                  ? s.sizeSplit.reduce((a, sz) => a + sz.quantity, 0)
+                  : s.requiredQuantity;
+
+              const orderSvc = await tx.orderService.create({
+                data: {
+                  order_id: order.id,
+                  service_id: s.service_id,
+                  requiredQuantity: reqQty,
+                  notes: s.notes,
+                },
+              });
+
+              if (s.sizeSplit && s.sizeSplit.length > 0) {
+                await tx.orderServiceSize.createMany({
+                  data: s.sizeSplit
+                    .filter((sz) => sz.quantity > 0)
+                    .map((sz) => ({
+                      orderService_id: orderSvc.id,
+                      size: sz.size,
+                      quantity: sz.quantity,
+                    })),
+                });
+              }
+            }
+          }
         });
+        created = true;
+      } catch (error: any) {
+        if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== "P2002") {
+          throw error;
+        }
       }
-    });
+    }
 
     revalidatePath("/admin/orders");
     return { success: true };
@@ -76,7 +129,18 @@ export async function getOrderSummary(orderId: number) {
         include: {
           service: true,
           provider: true,
-          deliveries: { orderBy: { date: "desc" } },
+          deliveries: {
+            orderBy: { date: "desc" },
+            include: { incomings: { orderBy: { date: "desc" } } },
+          },
+          sizeSplit: { orderBy: { size: "asc" } },
+          assignments: {
+            include: {
+              provider: true,
+              receptions: { orderBy: { receivedDate: "desc" } },
+            },
+            orderBy: { sentDate: "desc" },
+          },
         },
       },
       guides: { include: { guide: true } },
@@ -87,12 +151,9 @@ export async function getOrderSummary(orderId: number) {
 
   const totalDelivered = order.guides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
   const pending = order.totalQuantity - totalDelivered;
+  const status = deriveOrderStatus(order.status, totalDelivered, order.totalQuantity);
 
-  return {
-    ...order,
-    totalDelivered,
-    pending,
-  };
+  return { ...order, status, totalDelivered, pending };
 }
 
 export async function closeOrderManually(orderId: number) {
@@ -119,21 +180,23 @@ export async function updateOrder(
     totalQuantity: number;
     notes?: string;
     sizes: { size: string; quantity: number }[];
-    services: { service_id: number; requiredQuantity: number; notes?: string; provider_id?: number | null }[];
+    services: {
+      service_id: number;
+      requiredQuantity: number;
+      notes?: string;
+      provider_id?: number | null;
+      sizeSplit?: { size: string; quantity: number }[];
+    }[];
   }
 ) {
   try {
-    // Validar que la suma de tallas coincide con el total
     const sumSizes = data.sizes.reduce((acc, curr) => acc + curr.quantity, 0);
     if (sumSizes !== data.totalQuantity) {
       return { error: `La suma de las tallas (${sumSizes}) no coincide con la cantidad total (${data.totalQuantity}).` };
     }
 
     await prisma.$transaction(async (tx) => {
-      // Obtener cuánto ya se ha entregado
-      const existingGuides = await tx.guideDetail.findMany({
-        where: { order_id: orderId },
-      });
+      const existingGuides = await tx.guideDetail.findMany({ where: { order_id: orderId } });
       const totalDelivered = existingGuides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
 
       if (data.totalQuantity < totalDelivered) {
@@ -142,42 +205,49 @@ export async function updateOrder(
         );
       }
 
-      // Actualizar datos generales del pedido
       await tx.order.update({
         where: { id: orderId },
-        data: {
-          date: data.date,
-          garment: data.garment,
-          color: data.color,
-          totalQuantity: data.totalQuantity,
-          notes: data.notes,
-        },
+        data: { date: data.date, garment: data.garment, color: data.color, totalQuantity: data.totalQuantity, notes: data.notes },
       });
 
-      // Reemplazar tallas (delete + insert)
       await tx.orderSize.deleteMany({ where: { order_id: orderId } });
       if (data.sizes.length > 0) {
         await tx.orderSize.createMany({
-          data: data.sizes.map((s) => ({
-            order_id: orderId,
-            size: s.size,
-            quantity: s.quantity,
-          })),
+          data: data.sizes.map((s) => ({ order_id: orderId, size: s.size, quantity: s.quantity })),
         });
       }
 
-      // Reemplazar servicios (delete + insert)
+      // Delete old services (cascade deletes sizeSplit and assignments)
       await tx.orderService.deleteMany({ where: { order_id: orderId } });
       if (data.services.length > 0) {
-        await tx.orderService.createMany({
-          data: data.services.map((s) => ({
-            order_id: orderId,
-            service_id: s.service_id,
-            requiredQuantity: s.requiredQuantity,
-            notes: s.notes,
-            provider_id: s.provider_id ?? null,
-          })),
-        });
+        for (const s of data.services) {
+          const reqQty =
+            s.sizeSplit && s.sizeSplit.length > 0
+              ? s.sizeSplit.reduce((a, sz) => a + sz.quantity, 0)
+              : s.requiredQuantity;
+
+          const orderSvc = await tx.orderService.create({
+            data: {
+              order_id: orderId,
+              service_id: s.service_id,
+              requiredQuantity: reqQty,
+              notes: s.notes,
+              provider_id: s.provider_id ?? null,
+            },
+          });
+
+          if (s.sizeSplit && s.sizeSplit.length > 0) {
+            await tx.orderServiceSize.createMany({
+              data: s.sizeSplit
+                .filter((sz) => sz.quantity > 0)
+                .map((sz) => ({
+                  orderService_id: orderSvc.id,
+                  size: sz.size,
+                  quantity: sz.quantity,
+                })),
+            });
+          }
+        }
       }
     });
 
@@ -189,4 +259,3 @@ export async function updateOrder(
     return { error: error.message || "Error al actualizar el pedido." };
   }
 }
-

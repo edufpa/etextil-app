@@ -2,12 +2,15 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Plus, Package } from "lucide-react";
 import styles from "../services/services.module.css";
+import { companyFilter } from "@/lib/company";
 
 export const dynamic = 'force-dynamic';
 export default async function OrdersPage() {
+  const filter = await companyFilter();
   const orders = await prisma.order.findMany({
     orderBy: { createdAt: "desc" },
     include: { client: true, guides: true },
+    where: { ...filter },
   });
 
   return (
@@ -41,6 +44,14 @@ export default async function OrdersPage() {
             <tbody>
               {orders.map((o: any) => {
                 const totalDelivered = o.guides.reduce((acc: number, g: any) => acc + g.deliveredQuantity, 0);
+                const displayStatus =
+                  o.status === "CERRADO" || o.status === "CANCELADO"
+                    ? o.status
+                    : totalDelivered >= o.totalQuantity
+                    ? "ENTREGADO"
+                    : totalDelivered > 0
+                    ? "PARCIALMENTE ENTREGADO"
+                    : "PENDIENTE";
                 
                 return (
                   <tr key={o.id}>
@@ -61,12 +72,12 @@ export default async function OrdersPage() {
                     </td>
                     <td>
                       <span className={styles.badge} style={{
-                        background: o.status === 'CERRADO' ? '#333' : 
-                                   o.status === 'PENDIENTE' ? 'orange' :
-                                   o.status === 'ENTREGADO' ? 'green' : 'blue',
-                        color: o.status === 'CERRADO' ? 'white' : 'inherit'
+                        background: displayStatus === 'CERRADO' ? '#333' : 
+                                   displayStatus === 'PENDIENTE' ? 'orange' :
+                                   displayStatus === 'ENTREGADO' ? 'green' : 'blue',
+                        color: displayStatus === 'CERRADO' ? 'white' : 'inherit'
                       }}>
-                        {o.status}
+                        {displayStatus}
                       </span>
                     </td>
                     <td>

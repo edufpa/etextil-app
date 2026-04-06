@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Ruler } from "lucide-react";
 import styles from "./services.module.css";
 import DeleteServiceButton from "./DeleteServiceButton";
 
@@ -34,6 +34,7 @@ export default async function ServicesPage() {
                 <th>ID</th>
                 <th>Nombre</th>
                 <th>Tipo</th>
+                <th>Control</th>
                 <th>Descripción</th>
                 <th>Acciones</th>
               </tr>
@@ -47,6 +48,27 @@ export default async function ServicesPage() {
                     <span className={`${styles.badge} ${styles.type}`}>
                       {service.type}
                     </span>
+                  </td>
+                  <td>
+                    {service.trackBySize ? (
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        background: "var(--primary)", color: "white",
+                        fontSize: "0.7rem", fontWeight: 700,
+                        padding: "3px 8px", borderRadius: "999px",
+                      }}>
+                        <Ruler size={11} /> Por talla
+                      </span>
+                    ) : (
+                      <span style={{
+                        display: "inline-flex", alignItems: "center", gap: "4px",
+                        background: "var(--card-border)", color: "var(--text-muted)",
+                        fontSize: "0.7rem", fontWeight: 600,
+                        padding: "3px 8px", borderRadius: "999px",
+                      }}>
+                        Total
+                      </span>
+                    )}
                   </td>
                   <td style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
                     {service.description || "—"}
@@ -68,3 +90,4 @@ export default async function ServicesPage() {
     </div>
   );
 }
+

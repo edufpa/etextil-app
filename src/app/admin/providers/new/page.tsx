@@ -1,9 +1,17 @@
+import { prisma } from "@/lib/prisma";
 import ProviderForm from "../ProviderForm";
 
-export default function NewProviderPage() {
+export const dynamic = 'force-dynamic';
+
+export default async function NewProviderPage() {
+  const allServices = await prisma.service.findMany({
+    where: { status: true },
+    orderBy: { name: "asc" },
+  });
+
   return (
     <div>
-      <ProviderForm />
+      <ProviderForm allServices={allServices} selectedServiceIds={[]} />
     </div>
   );
 }

@@ -3,12 +3,14 @@ import Link from "next/link";
 import { Plus, Pencil } from "lucide-react";
 import styles from "../services/services.module.css";
 import DeleteClientButton from "./DeleteClientButton";
+import { companyFilter } from "@/lib/company";
 
 export const dynamic = 'force-dynamic';
 export default async function ClientsPage() {
+  const filter = await companyFilter();
   const clients = await prisma.client.findMany({
     orderBy: { createdAt: "desc" },
-    where: { status: true },
+    where: { status: true, ...filter },
   });
 
   return (

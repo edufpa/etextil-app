@@ -8,11 +8,12 @@ export async function createService(formData: FormData) {
     const name = formData.get("name") as string;
     const description = formData.get("description") as string;
     const type = formData.get("type") as string;
+    const trackBySize = formData.get("trackBySize") === "true";
 
     if (!name || !type) return { error: "Nombre y tipo son obligatorios" };
 
     await prisma.service.create({
-      data: { name, description, type, status: true },
+      data: { name, description, type, trackBySize, status: true },
     });
 
     revalidatePath("/admin/services");
@@ -28,12 +29,13 @@ export async function updateService(id: number, formData: FormData) {
     const description = formData.get("description") as string;
     const type = formData.get("type") as string;
     const status = formData.get("status") === "true";
+    const trackBySize = formData.get("trackBySize") === "true";
 
     if (!name || !type) return { error: "Nombre y tipo son obligatorios" };
 
     await prisma.service.update({
       where: { id },
-      data: { name, description, type, status },
+      data: { name, description, type, trackBySize, status },
     });
 
     revalidatePath("/admin/services");

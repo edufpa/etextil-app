@@ -6,12 +6,50 @@ import { revalidatePath } from "next/cache";
 export async function createProviderDelivery(data: {
   orderService_id: number;
   provider_id: number;
+  size?: string | null;
   date: Date;
   quantity: number;
   notes?: string;
 }) {
   try {
-    // Validar que el orderService existe e incluir entregas previas
+    const orderService = await prisma.orderService.findUnique({
+      where: { id: data.orderService_id },
+      include: {
+        service: { select: { trackBySize: true } },
+        deliveries: { select: { quantity: true, size: true } },
+        order: { select: { id: true } },
+      },
+    });
+
+    if (!orderService) return { error: "Servicio del pedido no encontrado." };
+    if (data.quantity <= 0) return { error: "La cantidad debe ser mayor a 0." };
+
+    const alreadyDelivered = orderService.deliveries.reduce((s, d) => s + d.quantity, 0);
+    const remaining = orderService.requiredQuantity - alreadyDelivered;
+
+    if (data.quantity > remaining) {
+      return { error: `Saldo disponible: ${remaining}. No se puede registrar ${data.quantity}.` };
+    }
+
+    await prisma.providerDelivery.create({ data });
+
+    revalidatePath(`/admin/orders/${orderService.order.id}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error(error);
+    return { error: error.message || "Error al registrar la entrega." };
+  }
+}
+
+/** Creates one ProviderDelivery per size in a single transaction. */
+export async function createProviderDeliveryBatch(data: {
+  orderService_id: number;
+  provider_id: number;
+  date: Date;
+  notes?: string;
+  sizes: { size: string; quantity: number }[];
+}) {
+  try {
     const orderService = await prisma.orderService.findUnique({
       where: { id: data.orderService_id },
       include: {
@@ -22,21 +60,37 @@ export async function createProviderDelivery(data: {
 
     if (!orderService) return { error: "Servicio del pedido no encontrado." };
 
+    const validSizes = data.sizes.filter((s) => s.quantity > 0);
+    if (validSizes.length === 0) return { error: "Ingresa al menos una cantidad mayor a 0." };
+
+    const totalBatch = validSizes.reduce((s, sz) => s + sz.quantity, 0);
     const alreadyDelivered = orderService.deliveries.reduce((s, d) => s + d.quantity, 0);
     const remaining = orderService.requiredQuantity - alreadyDelivered;
 
-    if (data.quantity > remaining) {
-      return { error: `Saldo disponible: ${remaining}. No se puede registrar ${data.quantity}.` };
+    if (totalBatch > remaining) {
+      return { error: `Total del lote (${totalBatch}) supera el saldo disponible (${remaining}).` };
     }
-    if (data.quantity <= 0) return { error: "La cantidad debe ser mayor a 0." };
 
-    await prisma.providerDelivery.create({ data });
+    await prisma.$transaction(
+      validSizes.map((sz) =>
+        prisma.providerDelivery.create({
+          data: {
+            orderService_id: data.orderService_id,
+            provider_id: data.provider_id,
+            size: sz.size,
+            date: data.date,
+            quantity: sz.quantity,
+            notes: data.notes,
+          },
+        })
+      )
+    );
 
     revalidatePath(`/admin/orders/${orderService.order.id}`);
     return { success: true };
   } catch (error: any) {
     console.error(error);
-    return { error: error.message || "Error al registrar la entrega." };
+    return { error: error.message || "Error al registrar el lote." };
   }
 }
 

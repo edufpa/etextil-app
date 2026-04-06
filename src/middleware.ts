@@ -16,6 +16,9 @@ export async function middleware(req: NextRequest) {
     if (!parsed?.userId) {
       return NextResponse.redirect(new URL("/login", req.nextUrl));
     }
+    if (path.startsWith("/admin/global") && parsed.role !== "GLOBAL_ADMIN") {
+      return NextResponse.redirect(new URL("/admin", req.nextUrl));
+    }
   }
   
   if (path === "/" || path === "/login") {

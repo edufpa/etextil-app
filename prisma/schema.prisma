@@ -9,15 +9,41 @@ datasource db {
   directUrl = env("POSTGRES_URL_NON_POOLING")
 }
 
+model Company {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique
+  status    Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  users     AppUser[]
+  clients   Client[]
+  providers Provider[]
+  orders    Order[]
+}
+
+model AppUser {
+  id           Int       @id @default(autoincrement())
+  username     String    @unique
+  passwordHash String
+  role         String    @default("COMPANY_ADMIN") // GLOBAL_ADMIN | COMPANY_ADMIN
+  company_id   Int?
+  company      Company?  @relation(fields: [company_id], references: [id])
+  status       Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
 model Service {
-  id             Int            @id @default(autoincrement())
-  name           String
-  description    String?
-  type           String         // 'interno', 'externo', 'mixto'
-  status         Boolean        @default(true) // true for active, false for inactive
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
-  OrderService   OrderService[]
+  id               Int               @id @default(autoincrement())
+  name             String
+  description      String?
+  type             String            // 'interno', 'externo', 'mixto'
+  trackBySize      Boolean           @default(false) // true = requiere desglose por talla
+  status           Boolean           @default(true)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  OrderService     OrderService[]
+  providerServices ProviderService[]
 }
 
 model Provider {
@@ -29,24 +55,41 @@ model Provider {
   address           String?
   notes             String?
   status            Boolean            @default(true)
+  company_id        Int?
+  company           Company?           @relation(fields: [company_id], references: [id])
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
   orderServices     OrderService[]
   providerDeliveries ProviderDelivery[]
+  workAssignments   WorkAssignment[]
+  services          ProviderService[]
+}
+
+model ProviderService {
+  id          Int      @id @default(autoincrement())
+  provider_id Int
+  provider    Provider @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  service_id  Int
+  service     Service  @relation(fields: [service_id], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([provider_id, service_id])
 }
 
 model Client {
-  id        Int      @id @default(autoincrement())
-  name      String
-  status    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  Order     Order[]
+  id         Int      @id @default(autoincrement())
+  name       String
+  status     Boolean  @default(true)
+  company_id Int?
+  company    Company? @relation(fields: [company_id], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  Order      Order[]
 }
 
 model Order {
   id             Int      @id @default(autoincrement())
-  orderNumber    String   @unique
+  orderNumber    String
   client_id      Int
   client         Client   @relation(fields: [client_id], references: [id])
   date           DateTime
@@ -55,12 +98,16 @@ model Order {
   totalQuantity  Int
   notes          String?
   status         String   @default("PENDIENTE") // PENDIENTE, EN PROCESO, PARCIALMENTE ENTREGADO, ENTREGADO, CERRADO, CANCELADO
+  company_id     Int?
+  company        Company? @relation(fields: [company_id], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   sizes          OrderSize[]
   services       OrderService[]
   guides         GuideDetail[]
+
+  @@unique([company_id, orderNumber])
 }
 
 model OrderSize {
@@ -74,18 +121,20 @@ model OrderSize {
 }
 
 model OrderService {
-  id               Int                @id @default(autoincrement())
+  id               Int                  @id @default(autoincrement())
   order_id         Int
-  order            Order              @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  order            Order                @relation(fields: [order_id], references: [id], onDelete: Cascade)
   service_id       Int
-  service          Service            @relation(fields: [service_id], references: [id])
+  service          Service              @relation(fields: [service_id], references: [id])
   provider_id      Int?
-  provider         Provider?          @relation(fields: [provider_id], references: [id])
+  provider         Provider?            @relation(fields: [provider_id], references: [id])
   requiredQuantity Int
   notes            String?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
   deliveries       ProviderDelivery[]
+  sizeSplit        OrderServiceSize[]   // desglose por talla (solo si trackBySize)
+  assignments      WorkAssignment[]     // lotes enviados al taller
 }
 
 model Guide {
@@ -113,17 +162,71 @@ model GuideDetail {
   updatedAt         DateTime @updatedAt
 }
 
+// OP — Orden de Producción: lo que enviamos al taller
 model ProviderDelivery {
+  id               Int                 @id @default(autoincrement())
+  orderService_id  Int
+  orderService     OrderService        @relation(fields: [orderService_id], references: [id], onDelete: Cascade)
+  provider_id      Int
+  provider         Provider            @relation(fields: [provider_id], references: [id])
+  size             String?             // talla del lote enviado
+  date             DateTime            @default(now())
+  quantity         Int
+  notes            String?
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+  incomings        ProviderIncoming[]  // recepciones de vuelta del taller
+}
+
+// Ingreso — lo que el taller nos devuelve (trabajo terminado)
+model ProviderIncoming {
+  id                  Int              @id @default(autoincrement())
+  providerDelivery_id Int
+  providerDelivery    ProviderDelivery @relation(fields: [providerDelivery_id], references: [id], onDelete: Cascade)
+  quantity            Int
+  date                DateTime         @default(now())
+  notes               String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+}
+
+// Desglose por talla de un servicio en el pedido (solo cuando Service.trackBySize = true)
+model OrderServiceSize {
   id               Int          @id @default(autoincrement())
   orderService_id  Int
   orderService     OrderService @relation(fields: [orderService_id], references: [id], onDelete: Cascade)
-  provider_id      Int
-  provider         Provider     @relation(fields: [provider_id], references: [id])
-  date             DateTime     @default(now())
-  quantity         Int
-  notes            String?
+  size             String
+  quantity         Int          // requerido para esta talla
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
+}
+
+// Lote enviado a un taller para un servicio
+model WorkAssignment {
+  id               Int               @id @default(autoincrement())
+  orderService_id  Int
+  orderService     OrderService      @relation(fields: [orderService_id], references: [id], onDelete: Cascade)
+  provider_id      Int
+  provider         Provider          @relation(fields: [provider_id], references: [id])
+  size             String?           // null = sin desglose (trackBySize = false)
+  sentQty          Int
+  sentDate         DateTime
+  notes            String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  receptions       WorkReception[]
+}
+
+// Recepción de prendas terminadas de regreso del taller
+model WorkReception {
+  id               Int            @id @default(autoincrement())
+  assignment_id    Int
+  assignment       WorkAssignment @relation(fields: [assignment_id], references: [id], onDelete: Cascade)
+  receivedQty      Int
+  receivedDate     DateTime
+  notes            String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 }
 
 model Size {

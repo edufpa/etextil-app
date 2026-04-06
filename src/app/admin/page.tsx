@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Package, Users, FileText, Truck, TrendingUp } from "lucide-react";
 import styles from "./dashboard.module.css";
 import Link from "next/link";
+import { companyFilter } from "@/lib/company";
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +29,8 @@ export default async function DashboardPage() {
   since.setDate(since.getDate() - DAYS + 1);
   since.setHours(0, 0, 0, 0);
 
+  const filter = await companyFilter();
+
   const [
     totalActiveOrders,
     totalPendingGarments,
@@ -36,13 +39,13 @@ export default async function DashboardPage() {
     providerDeliveries,
     guideDetails,
   ] = await Promise.all([
-    prisma.order.count({ where: { status: { notIn: ["CERRADO", "CANCELADO"] } } }),
+    prisma.order.count({ where: { status: { notIn: ["CERRADO", "CANCELADO"] }, ...filter } }),
     prisma.order.aggregate({
-      where: { status: { notIn: ["CERRADO", "CANCELADO"] } },
+      where: { status: { notIn: ["CERRADO", "CANCELADO"] }, ...filter },
       _sum: { totalQuantity: true },
     }),
-    prisma.client.count({ where: { status: true } }),
-    prisma.provider.count({ where: { status: true } }),
+    prisma.client.count({ where: { status: true, ...filter } }),
+    prisma.provider.count({ where: { status: true, ...filter } }),
     prisma.providerDelivery.findMany({
       where: { date: { gte: since, lte: today } },
       include: {

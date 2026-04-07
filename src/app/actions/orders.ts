@@ -279,3 +279,37 @@ export async function updateOrder(
     return { error: error.message || "Error al actualizar el pedido." };
   }
 }
+
+export async function adjustOrderServiceQty(
+  orderServiceId: number,
+  orderId: number,
+  newQty: number
+) {
+  try {
+    const svc = await prisma.orderService.findUnique({
+      where: { id: orderServiceId },
+      include: { service: { select: { name: true } }, deliveries: { select: { quantity: true } } },
+    });
+    if (!svc) return { error: "Servicio no encontrado." };
+
+    const totalSent = svc.deliveries.reduce((a, d) => a + d.quantity, 0);
+    if (newQty < totalSent) {
+      return { error: `No puede ser menor que lo ya enviado al taller (${totalSent} u).` };
+    }
+    if (newQty < 1) return { error: "Debe ser al menos 1." };
+
+    await prisma.orderService.update({
+      where: { id: orderServiceId },
+      data: { requiredQuantity: newQty },
+    });
+
+    await logActivity(
+      "ADJUST_SERVICE_QTY",
+      `Reajuste servicio "${svc.service.name}" — Pedido #${orderId}: ${svc.requiredQuantity} → ${newQty} u.`
+    );
+    revalidatePath(`/admin/orders/${orderId}`);
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al reajustar." };
+  }
+}

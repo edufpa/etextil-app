@@ -19,6 +19,8 @@ model Company {
   clients   Client[]
   providers Provider[]
   orders    Order[]
+  molds     Mold[]
+  garments  Garment[]
 }
 
 model AppUser {
@@ -252,4 +254,34 @@ model ActivityLog {
   username  String   // session username
   companyId Int?     // session companyId
   createdAt DateTime @default(now())
+}
+
+model Mold {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  name        String
+  description String?
+  notes       String?
+  status      Boolean   @default(true)
+  company_id  Int?
+  company     Company?  @relation(fields: [company_id], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  garments    Garment[]
+}
+
+model Garment {
+  id          Int      @id @default(autoincrement())
+  name        String
+  code        String?
+  material    String?
+  mold_id     Int?
+  mold        Mold?    @relation(fields: [mold_id], references: [id])
+  photoUrl    String?
+  notes       String?
+  status      Boolean  @default(true)
+  company_id  Int?
+  company     Company? @relation(fields: [company_id], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

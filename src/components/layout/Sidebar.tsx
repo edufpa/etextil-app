@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText } from "lucide-react";
+import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText, Shirt, BookOpen } from "lucide-react";
 import styles from "./Sidebar.module.css";
 
 const mainItems = [
@@ -19,6 +19,8 @@ const configItems = [
   { name: "Clientes", path: "/admin/clients", icon: Users },
   { name: "Proveedores", path: "/admin/providers", icon: Truck },
   { name: "Servicios", path: "/admin/services", icon: Scissors },
+  { name: "Prendas", path: "/admin/garments", icon: Shirt },
+  { name: "Moldes", path: "/admin/molds", icon: BookOpen },
   { name: "Tallas", path: "/admin/sizes", icon: Ruler },
   { name: "Colores", path: "/admin/colors", icon: Palette },
 ];
@@ -32,7 +34,7 @@ export default function Sidebar() {
   return (
     <aside className={styles.sidebar}>
       <div className={styles.logo}>
-        <h1>eTextil</h1>
+        <h1>SIAT</h1>
       </div>
 
       {/* Main navigation */}

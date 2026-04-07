@@ -9,6 +9,7 @@ import DeleteOrderButton from "./DeleteOrderButton";
 import ProviderDeliveryForm from "./ProviderDeliveryForm";
 import DeleteDeliveryButton from "./DeleteDeliveryButton";
 import IncomingPanel from "./IncomingPanel";
+import AdjustQtyButton from "./AdjustQtyButton";
 
 export const dynamic = 'force-dynamic';
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -161,10 +162,19 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                           {svc.provider && <span> · <strong style={{ color: "var(--primary)" }}><Truck size={12} style={{ display: "inline" }} /> {svc.provider.businessName}</strong></span>}
                         </div>
                       </div>
-                      <div style={{ textAlign: "right", fontSize: "0.82rem", display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                      <div style={{ textAlign: "right", fontSize: "0.82rem", display: "flex", flexDirection: "column", gap: "0.15rem", alignItems: "flex-end" }}>
                         <span style={{ color: "var(--primary)" }}>Env: <strong>{sentToTaller}</strong></span>
                         <span style={{ color: "green" }}>Rec: <strong>{receivedBack}</strong></span>
                         <span style={{ color: "var(--text-muted)" }}>Req: {svc.requiredQuantity}</span>
+                        {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
+                          <AdjustQtyButton
+                            orderServiceId={svc.id}
+                            orderId={order.id}
+                            currentQty={svc.requiredQuantity}
+                            sentQty={sentToTaller}
+                            serviceName={svc.service.name}
+                          />
+                        )}
                       </div>
                     </div>
                     {svc.sizeSplit && svc.sizeSplit.length > 0 && (

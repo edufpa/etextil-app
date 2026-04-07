@@ -56,3 +56,36 @@
   font-weight: 700;
   color: var(--foreground);
 }
+
+/* Compact KPI grid */
+.statsGridCompact {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.65rem;
+}
+
+.statCardCompact {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.statLabelCompact {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-bottom: 0.1rem;
+  line-height: 1.2;
+}
+
+.statValueCompact {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1;
+}

@@ -3,26 +3,27 @@ import { Package, Users, FileText, Truck, TrendingUp } from "lucide-react";
 import styles from "./dashboard.module.css";
 import Link from "next/link";
 import { companyFilter } from "@/lib/company";
+import { Suspense } from "react";
+import DaysSelector from "./DaysSelector";
 
 export const dynamic = 'force-dynamic';
 
-const DAYS = 14;
+type SearchParams = Promise<{ days?: string }>;
 
 function formatDay(d: Date) {
   return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
 }
-
 function getDayKey(d: Date) {
   return d.toISOString().split("T")[0];
 }
-
 function addDays(d: Date, n: number) {
-  const r = new Date(d);
-  r.setDate(r.getDate() + n);
-  return r;
+  const r = new Date(d); r.setDate(r.getDate() + n); return r;
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+  const DAYS = Math.min(30, Math.max(7, parseInt(params.days || "14", 10)));
+
   const today = new Date();
   today.setHours(23, 59, 59, 999);
   const since = new Date(today);
@@ -36,8 +37,9 @@ export default async function DashboardPage() {
     totalPendingGarments,
     totalClients,
     totalProviders,
-    providerDeliveries,
+    providerIncomings,
     guideDetails,
+    totalIncomingsKpi,
   ] = await Promise.all([
     prisma.order.count({ where: { status: { notIn: ["CERRADO", "CANCELADO"] }, ...filter } }),
     prisma.order.aggregate({
@@ -46,10 +48,15 @@ export default async function DashboardPage() {
     }),
     prisma.client.count({ where: { status: true, ...filter } }),
     prisma.provider.count({ where: { status: true, ...filter } }),
-    prisma.providerDelivery.findMany({
+    // Incomings for matrix (received FROM providers in period)
+    prisma.providerIncoming.findMany({
       where: { date: { gte: since, lte: today } },
       include: {
-        orderService: { include: { service: { select: { name: true } } } },
+        providerDelivery: {
+          include: {
+            orderService: { include: { service: { select: { name: true } } } },
+          },
+        },
       },
       orderBy: { date: "asc" },
     }),
@@ -57,27 +64,29 @@ export default async function DashboardPage() {
       where: { guide: { date: { gte: since, lte: today }, status: "ACTIVA" } },
       include: { guide: { select: { date: true } } },
     }),
+    // KPI: total received from providers (last DAYS)
+    prisma.providerIncoming.aggregate({
+      where: { date: { gte: since, lte: today } },
+      _sum: { quantity: true },
+    }),
   ]);
 
-  // Build array of last N days
+  // Build days array
   const days: Date[] = [];
-  for (let i = 0; i < DAYS; i++) {
-    days.push(addDays(since, i));
-  }
+  for (let i = 0; i < DAYS; i++) days.push(addDays(since, i));
 
-  // Build matrix: rows = services + "Entregas SUNAT"
-  // Collect all unique services with deliveries
-  const serviceMap = new Map<string, Map<string, number>>(); // serviceName -> { dayKey -> qty }
+  // Build matrix: rows = services (from incomings)
+  const serviceMap = new Map<string, Map<string, number>>();
 
-  for (const d of providerDeliveries) {
-    const svcName = d.orderService.service.name;
-    const dayKey = getDayKey(new Date(d.date));
+  for (const inc of providerIncomings) {
+    const svcName = inc.providerDelivery.orderService.service.name;
+    const dayKey = getDayKey(new Date(inc.date));
     if (!serviceMap.has(svcName)) serviceMap.set(svcName, new Map());
     const dayMap = serviceMap.get(svcName)!;
-    dayMap.set(dayKey, (dayMap.get(dayKey) || 0) + d.quantity);
+    dayMap.set(dayKey, (dayMap.get(dayKey) || 0) + inc.quantity);
   }
 
-  // SUNAT row
+  // SUNAT / Despachos row
   const sunatRow = new Map<string, number>();
   for (const gd of guideDetails) {
     const dayKey = getDayKey(new Date(gd.guide.date));
@@ -85,153 +94,148 @@ export default async function DashboardPage() {
   }
 
   const serviceNames = [...serviceMap.keys()].sort();
-
-  const totalProviderDeliveries = providerDeliveries.reduce((s, d) => s + d.quantity, 0);
+  const totalIncomings = totalIncomingsKpi._sum.quantity || 0;
   const totalSunat = guideDetails.reduce((s, d) => s + d.deliveredQuantity, 0);
 
   return (
     <div>
-      <h1 className={styles.pageTitle} style={{ marginBottom: "1.5rem" }}>Dashboard de Producción</h1>
+      <h1 className={styles.pageTitle} style={{ marginBottom: "1rem" }}>Dashboard de Producción</h1>
 
-      {/* KPI Cards */}
-      <div className={styles.statsGrid} style={{ marginBottom: "2rem" }}>
-        <div className={styles.statCard}>
-          <div className={styles.statIconWrapper}>
-            <Package className={styles.statIcon} size={24} />
-          </div>
+      {/* Compact KPI Cards */}
+      <div className={styles.statsGridCompact} style={{ marginBottom: "1.5rem" }}>
+        <div className={styles.statCardCompact}>
+          <Package size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabel}>Pedidos Activos</p>
-            <h3 className={styles.statValue}>{totalActiveOrders}</h3>
+            <p className={styles.statLabelCompact}>Pedidos Activos</p>
+            <h3 className={styles.statValueCompact}>{totalActiveOrders}</h3>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={`${styles.statIconWrapper} ${styles.blue}`}>
-            <TrendingUp className={styles.statIcon} size={24} />
-          </div>
+        <div className={styles.statCardCompact}>
+          <TrendingUp size={18} style={{ color: "#8b5cf6", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabel}>Prendas en Proceso</p>
-            <h3 className={styles.statValue}>{totalPendingGarments._sum.totalQuantity || 0}</h3>
+            <p className={styles.statLabelCompact}>Prendas en Proceso</p>
+            <h3 className={styles.statValueCompact}>{totalPendingGarments._sum.totalQuantity || 0}</h3>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={`${styles.statIconWrapper}`} style={{ background: "#e8f5e9" }}>
-            <FileText className={styles.statIcon} size={24} style={{ color: "green" }} />
-          </div>
+        <div className={styles.statCardCompact}>
+          <FileText size={18} style={{ color: "green", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabel}>Entregadas al cliente (14d)</p>
-            <h3 className={styles.statValue}>{totalSunat}</h3>
+            <p className={styles.statLabelCompact}>Entregadas Cliente ({DAYS}d)</p>
+            <h3 className={styles.statValueCompact} style={{ color: "green" }}>{totalSunat}</h3>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={`${styles.statIconWrapper}`} style={{ background: "#fff3e0" }}>
-            <Truck className={styles.statIcon} size={24} style={{ color: "orange" }} />
-          </div>
+        <div className={styles.statCardCompact}>
+          <Truck size={18} style={{ color: "orange", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabel}>Recibidas de Prov. (14d)</p>
-            <h3 className={styles.statValue}>{totalProviderDeliveries}</h3>
+            <p className={styles.statLabelCompact}>Ingresadas de Taller ({DAYS}d)</p>
+            <h3 className={styles.statValueCompact} style={{ color: "orange" }}>{totalIncomings}</h3>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={`${styles.statIconWrapper} ${styles.blue}`}>
-            <Users className={styles.statIcon} size={24} />
-          </div>
+        <div className={styles.statCardCompact}>
+          <Users size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabel}>Clientes</p>
-            <h3 className={styles.statValue}>{totalClients}</h3>
+            <p className={styles.statLabelCompact}>Clientes</p>
+            <h3 className={styles.statValueCompact}>{totalClients}</h3>
           </div>
         </div>
-        <div className={styles.statCard}>
-          <div className={styles.statIconWrapper}>
-            <Truck className={styles.statIcon} size={24} />
-          </div>
+        <div className={styles.statCardCompact}>
+          <Truck size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabel}>Proveedores Activos</p>
-            <h3 className={styles.statValue}>{totalProviders}</h3>
+            <p className={styles.statLabelCompact}>Proveedores</p>
+            <h3 className={styles.statValueCompact}>{totalProviders}</h3>
           </div>
         </div>
       </div>
 
       {/* MATRIX TABLE */}
       <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", overflow: "hidden" }}>
-        <div style={{ padding: "1.25rem 1.5rem", borderBottom: "1px solid var(--card-border)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <h2 style={{ fontSize: "1rem", fontWeight: 700 }}>Operaciones por Día (últimos {DAYS} días)</h2>
-          <Link href="/admin/orders" style={{ fontSize: "0.85rem", color: "var(--primary)", textDecoration: "none" }}>Ver pedidos →</Link>
+        <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--card-border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+          <h2 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>
+            Ingresos de Taller por Día — últimos {DAYS} días
+          </h2>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <Suspense fallback={null}>
+              <DaysSelector />
+            </Suspense>
+            <Link href="/admin/orders" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>Ver pedidos →</Link>
+          </div>
         </div>
 
         {serviceNames.length === 0 && sunatRow.size === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            No hay operaciones registradas en los últimos {DAYS} días.
-            <br /><br />
-            <Link href="/admin/orders" style={{ color: "var(--primary)" }}>Registra entregas de proveedor desde los pedidos</Link>
+            No hay ingresos de taller en los últimos {DAYS} días.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.82rem" }}>
               <thead>
                 <tr style={{ background: "var(--bg-color)" }}>
-                  <th style={{ padding: "0.75rem 1rem", textAlign: "left", fontWeight: 700, minWidth: "160px", borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "var(--bg-color)", zIndex: 1 }}>
+                  <th style={{ padding: "0.65rem 1rem", textAlign: "left", fontWeight: 700, minWidth: "160px", borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "var(--bg-color)", zIndex: 1 }}>
                     Operación / Servicio
                   </th>
-                  {days.map(d => (
-                    <th key={getDayKey(d)} style={{
-                      padding: "0.6rem 0.5rem",
-                      textAlign: "center",
-                      minWidth: "60px",
-                      borderBottom: "1px solid var(--card-border)",
-                      fontWeight: getDayKey(d) === getDayKey(new Date()) ? 700 : 400,
-                      color: getDayKey(d) === getDayKey(new Date()) ? "var(--primary)" : "var(--text-muted)",
-                    }}>
-                      {formatDay(d)}
-                    </th>
-                  ))}
-                  <th style={{ padding: "0.6rem 0.75rem", textAlign: "center", borderBottom: "1px solid var(--card-border)", fontWeight: 700 }}>Total</th>
+                  {days.map(d => {
+                    const isToday = getDayKey(d) === getDayKey(new Date());
+                    return (
+                      <th key={getDayKey(d)} style={{
+                        padding: "0.5rem 0.4rem",
+                        textAlign: "center",
+                        minWidth: "52px",
+                        borderBottom: "1px solid var(--card-border)",
+                        fontWeight: isToday ? 700 : 400,
+                        color: isToday ? "var(--primary)" : "var(--text-muted)",
+                        fontSize: "0.75rem",
+                      }}>
+                        {formatDay(d)}
+                      </th>
+                    );
+                  })}
+                  <th style={{ padding: "0.5rem 0.65rem", textAlign: "center", borderBottom: "1px solid var(--card-border)", fontWeight: 700, minWidth: "50px" }}>Total</th>
                 </tr>
               </thead>
               <tbody>
-                {/* Service rows */}
                 {serviceNames.map((svcName, idx) => {
                   const dayMap = serviceMap.get(svcName)!;
                   const rowTotal = [...dayMap.values()].reduce((a, b) => a + b, 0);
                   return (
                     <tr key={svcName} style={{ background: idx % 2 === 0 ? "var(--card-bg)" : "var(--bg-color)" }}>
-                      <td style={{ padding: "0.65rem 1rem", fontWeight: 600, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "inherit", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                        <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "var(--primary)", display: "inline-block", flexShrink: 0 }} />
+                      <td style={{ padding: "0.55rem 1rem", fontWeight: 600, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "inherit", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                        <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "var(--primary)", display: "inline-block", flexShrink: 0 }} />
                         {svcName}
                       </td>
                       {days.map(d => {
                         const qty = dayMap.get(getDayKey(d)) || 0;
                         return (
                           <td key={getDayKey(d)} style={{
-                            padding: "0.65rem 0.5rem",
+                            padding: "0.55rem 0.4rem",
                             textAlign: "center",
                             borderBottom: "1px solid var(--card-border)",
                             fontWeight: qty > 0 ? 700 : 400,
                             color: qty > 0 ? "var(--text-color)" : "var(--text-muted)",
-                            background: qty > 0 ? "rgba(99,102,241,0.06)" : "transparent",
+                            background: qty > 0 ? "rgba(99,102,241,0.07)" : "transparent",
                           }}>
                             {qty > 0 ? qty : "—"}
                           </td>
                         );
                       })}
-                      <td style={{ padding: "0.65rem 0.75rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--card-border)", color: "var(--primary)" }}>
+                      <td style={{ padding: "0.55rem 0.65rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--card-border)", color: "var(--primary)" }}>
                         {rowTotal}
                       </td>
                     </tr>
                   );
                 })}
 
-                {/* SUNAT row */}
+                {/* Despachos row */}
                 {sunatRow.size > 0 && (
-                  <tr style={{ background: "#e8f5e920", borderTop: "2px solid var(--card-border)" }}>
-                    <td style={{ padding: "0.65rem 1rem", fontWeight: 700, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "#e8f5e920", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                      <span style={{ width: "8px", height: "8px", borderRadius: "50%", background: "green", display: "inline-block", flexShrink: 0 }} />
-                      Entregas al Cliente (SUNAT)
+                  <tr style={{ background: "#e8f5e915", borderTop: "2px solid var(--card-border)" }}>
+                    <td style={{ padding: "0.55rem 1rem", fontWeight: 700, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "#e8f5e915", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "green", display: "inline-block", flexShrink: 0 }} />
+                      Despachos al Cliente
                     </td>
                     {days.map(d => {
                       const qty = sunatRow.get(getDayKey(d)) || 0;
                       return (
                         <td key={getDayKey(d)} style={{
-                          padding: "0.65rem 0.5rem",
+                          padding: "0.55rem 0.4rem",
                           textAlign: "center",
                           borderBottom: "1px solid var(--card-border)",
                           fontWeight: qty > 0 ? 700 : 400,
@@ -242,7 +246,7 @@ export default async function DashboardPage() {
                         </td>
                       );
                     })}
-                    <td style={{ padding: "0.65rem 0.75rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--card-border)", color: "green" }}>
+                    <td style={{ padding: "0.55rem 0.65rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--card-border)", color: "green" }}>
                       {totalSunat}
                     </td>
                   </tr>

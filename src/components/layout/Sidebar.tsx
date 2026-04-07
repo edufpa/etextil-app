@@ -8,7 +8,7 @@ import styles from "./Sidebar.module.css";
 const mainItems = [
   { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
   { name: "Pedidos", path: "/admin/orders", icon: Package },
-  { name: "Guías SUNAT", path: "/admin/guides", icon: FileText },
+  { name: "Despachos", path: "/admin/guides", icon: FileText },
   { name: "Reporte Talleres", path: "/admin/providers/reporte", icon: BarChart2 },
   { name: "Admin General", path: "/admin/global", icon: Users },
 ];

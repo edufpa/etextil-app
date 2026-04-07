@@ -7,7 +7,6 @@ import { notFound } from "next/navigation";
 import CloseOrderButton from "./CloseOrderButton";
 import ProviderDeliveryForm from "./ProviderDeliveryForm";
 import DeleteDeliveryButton from "./DeleteDeliveryButton";
-import WorkshopPanel from "./WorkshopPanel";
 import IncomingPanel from "./IncomingPanel";
 
 export const dynamic = 'force-dynamic';
@@ -56,33 +55,6 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     date: order.date.toLocaleDateString("es-PE"),
     totalQuantity: order.totalQuantity,
   };
-
-  // Build data for the WorkshopPanel
-  const orderServicesForPanel = order.services.map((svc: any) => ({
-    id: svc.id,
-    serviceId: svc.service_id,
-    service: {
-      name: svc.service.name,
-      type: svc.service.type,
-      trackBySize: svc.service.trackBySize ?? false,
-    },
-    provider: svc.provider ?? null,
-    requiredQuantity: svc.requiredQuantity,
-    sizeSplit: svc.sizeSplit ?? [],
-    assignments: (svc.assignments ?? []).map((a: any) => ({
-      id: a.id,
-      sentQty: a.sentQty,
-      sentDate: a.sentDate,
-      size: a.size,
-      notes: a.notes,
-      receptions: (a.receptions ?? []).map((r: any) => ({
-        id: r.id,
-        receivedQty: r.receivedQty,
-        receivedDate: r.receivedDate,
-        notes: r.notes,
-      })),
-    })),
-  }));
 
   const providersForPanel = providers.map((p: any) => ({
     id: p.id,
@@ -243,14 +215,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
         {/* PANEL DERECHO */}
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-          {/* Workshop Assignment Panel */}
-          <WorkshopPanel
-            orderId={order.id}
-            orderServices={orderServicesForPanel}
-            providers={providersForPanel}
-          />
           <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Entregas y Saldos (SUNAT)</h3>
+            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Entregas y Saldos</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.125rem" }}>
                 <span style={{ color: "var(--text-muted)" }}>Total Solicitado:</span>
@@ -267,14 +233,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             </div>
           </div>
 
-          {/* Historial de Guías */}
+          {/* Historial de Despachos */}
           <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Guías SUNAT Asociadas</h3>
+            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Despachos Asociados</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
               {order.guides.map((gdetail: any) => (
                 <div key={gdetail.id} style={{ display: "flex", flexDirection: "column", gap: "0.25rem", paddingBottom: "1rem", borderBottom: "1px solid var(--card-border)" }}>
                   <Link href={`/admin/guides/${gdetail.guide.id}`} style={{ fontWeight: 600, color: "var(--primary)" }}>
-                    Guía {gdetail.guide.sunatNumber}
+                    Despacho {gdetail.guide.sunatNumber}
                   </Link>
                   <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>{gdetail.guide.date.toLocaleDateString()}</div>
                   <div style={{ fontWeight: 600, color: "green" }}>+ {gdetail.deliveredQuantity} entregados
@@ -282,7 +248,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   </div>
                 </div>
               ))}
-              {order.guides.length === 0 && <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>No se han registrado entregas parciales.</span>}
+              {order.guides.length === 0 && <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>No se han registrado despachos.</span>}
             </div>
           </div>
         </div>

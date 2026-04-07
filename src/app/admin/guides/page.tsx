@@ -19,17 +19,17 @@ export default async function GuidesPage() {
   return (
     <div>
       <div className={styles.pageHeader}>
-        <h1 className={styles.title}>Guías SUNAT (Entregas)</h1>
+        <h1 className={styles.title}>Despachos</h1>
         <Link href="/admin/guides/new" className={styles.newButton}>
           <Plus size={18} />
-          Nueva Guía
+          Nuevo Despacho
         </Link>
       </div>
 
       <div className={styles.tableContainer}>
         {guides.length === 0 ? (
           <div className={styles.emptyState}>
-            No hay guías registradas.
+            No hay despachos registrados.
           </div>
         ) : (
           <table className={styles.table}>

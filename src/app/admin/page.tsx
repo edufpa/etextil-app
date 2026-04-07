@@ -5,10 +5,11 @@ import Link from "next/link";
 import { companyFilter } from "@/lib/company";
 import { Suspense } from "react";
 import DaysSelector from "./DaysSelector";
+import ProviderSelector from "./ProviderSelector";
 
 export const dynamic = 'force-dynamic';
 
-type SearchParams = Promise<{ days?: string }>;
+type SearchParams = Promise<{ days?: string; provider?: string }>;
 
 function formatDay(d: Date) {
   return d.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" });
@@ -23,6 +24,7 @@ function addDays(d: Date, n: number) {
 export default async function DashboardPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const DAYS = Math.min(30, Math.max(7, parseInt(params.days || "14", 10)));
+  const providerFilter = params.provider ? parseInt(params.provider, 10) : null;
 
   const today = new Date();
   today.setHours(23, 59, 59, 999);
@@ -32,11 +34,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
 
   const filter = await companyFilter();
 
+  const incomingWhere: any = {
+    date: { gte: since, lte: today },
+    ...(providerFilter ? { providerDelivery: { provider_id: providerFilter } } : {}),
+  };
+
   const [
     totalActiveOrders,
     totalPendingGarments,
     totalClients,
     totalProviders,
+    allProviders,
     providerIncomings,
     guideDetails,
     totalIncomingsKpi,
@@ -48,12 +56,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
     }),
     prisma.client.count({ where: { status: true, ...filter } }),
     prisma.provider.count({ where: { status: true, ...filter } }),
-    // Incomings for matrix (received FROM providers in period)
+    prisma.provider.findMany({
+      where: { status: true, ...filter },
+      orderBy: { businessName: "asc" },
+      select: { id: true, businessName: true },
+    }),
     prisma.providerIncoming.findMany({
-      where: { date: { gte: since, lte: today } },
+      where: incomingWhere,
       include: {
         providerDelivery: {
           include: {
+            provider: { select: { id: true, businessName: true } },
             orderService: { include: { service: { select: { name: true } } } },
           },
         },
@@ -64,9 +77,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       where: { guide: { date: { gte: since, lte: today }, status: "ACTIVA" } },
       include: { guide: { select: { date: true } } },
     }),
-    // KPI: total received from providers (last DAYS)
     prisma.providerIncoming.aggregate({
-      where: { date: { gte: since, lte: today } },
+      where: incomingWhere,
       _sum: { quantity: true },
     }),
   ]);
@@ -75,9 +87,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   const days: Date[] = [];
   for (let i = 0; i < DAYS; i++) days.push(addDays(since, i));
 
-  // Build matrix: rows = services (from incomings)
+  // Build matrix: rows = services
   const serviceMap = new Map<string, Map<string, number>>();
-
   for (const inc of providerIncomings) {
     const svcName = inc.providerDelivery.orderService.service.name;
     const dayKey = getDayKey(new Date(inc.date));
@@ -86,22 +97,28 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
     dayMap.set(dayKey, (dayMap.get(dayKey) || 0) + inc.quantity);
   }
 
-  // SUNAT / Despachos row
+  // Despachos row (not filtered by provider — always global)
   const sunatRow = new Map<string, number>();
-  for (const gd of guideDetails) {
-    const dayKey = getDayKey(new Date(gd.guide.date));
-    sunatRow.set(dayKey, (sunatRow.get(dayKey) || 0) + gd.deliveredQuantity);
+  if (!providerFilter) {
+    for (const gd of guideDetails) {
+      const dayKey = getDayKey(new Date(gd.guide.date));
+      sunatRow.set(dayKey, (sunatRow.get(dayKey) || 0) + gd.deliveredQuantity);
+    }
   }
 
   const serviceNames = [...serviceMap.keys()].sort();
   const totalIncomings = totalIncomingsKpi._sum.quantity || 0;
   const totalSunat = guideDetails.reduce((s, d) => s + d.deliveredQuantity, 0);
 
+  const selectedProvider = providerFilter
+    ? allProviders.find((p) => p.id === providerFilter)
+    : null;
+
   return (
     <div>
       <h1 className={styles.pageTitle} style={{ marginBottom: "1rem" }}>Dashboard de Producción</h1>
 
-      {/* Compact KPI Cards */}
+      {/* KPI Cards */}
       <div className={styles.statsGridCompact} style={{ marginBottom: "1.5rem" }}>
         <div className={styles.statCardCompact}>
           <Package size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
@@ -127,7 +144,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
         <div className={styles.statCardCompact}>
           <Truck size={18} style={{ color: "orange", flexShrink: 0 }} />
           <div>
-            <p className={styles.statLabelCompact}>Ingresadas de Taller ({DAYS}d)</p>
+            <p className={styles.statLabelCompact}>
+              Ingresadas de Taller ({DAYS}d)
+              {selectedProvider && <span style={{ fontSize: "0.7rem", display: "block", color: "var(--text-muted)" }}>{selectedProvider.businessName}</span>}
+            </p>
             <h3 className={styles.statValueCompact} style={{ color: "orange" }}>{totalIncomings}</h3>
           </div>
         </div>
@@ -150,20 +170,33 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       {/* MATRIX TABLE */}
       <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", overflow: "hidden" }}>
         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--card-border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
-          <h2 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>
-            Ingresos de Taller por Día — últimos {DAYS} días
-          </h2>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <div>
+            <h2 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>
+              Ingresos de Taller por Día — últimos {DAYS} días
+            </h2>
+            {selectedProvider && (
+              <span style={{ fontSize: "0.78rem", color: "var(--primary)", fontWeight: 600 }}>
+                Taller: {selectedProvider.businessName}
+              </span>
+            )}
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+            <Suspense fallback={null}>
+              <ProviderSelector providers={allProviders} />
+            </Suspense>
             <Suspense fallback={null}>
               <DaysSelector />
             </Suspense>
-            <Link href="/admin/orders" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>Ver pedidos →</Link>
+            <Link href="/admin/orders" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+              Ver pedidos →
+            </Link>
           </div>
         </div>
 
         {serviceNames.length === 0 && sunatRow.size === 0 ? (
           <div style={{ padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-            No hay ingresos de taller en los últimos {DAYS} días.
+            No hay ingresos de taller en los últimos {DAYS} días
+            {selectedProvider ? ` para ${selectedProvider.businessName}` : ""}.
           </div>
         ) : (
           <div style={{ overflowX: "auto" }}>
@@ -224,8 +257,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                   );
                 })}
 
-                {/* Despachos row */}
-                {sunatRow.size > 0 && (
+                {/* Despachos row — only when not filtered by provider */}
+                {!providerFilter && sunatRow.size > 0 && (
                   <tr style={{ background: "#e8f5e915", borderTop: "2px solid var(--card-border)" }}>
                     <td style={{ padding: "0.55rem 1rem", fontWeight: 700, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "#e8f5e915", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "green", display: "inline-block", flexShrink: 0 }} />

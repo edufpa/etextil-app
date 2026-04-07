@@ -5,6 +5,7 @@ import { ArrowLeft, Scissors, Pencil, Truck, Ruler } from "lucide-react";
 import styles from "../../services/services.module.css";
 import { notFound } from "next/navigation";
 import CloseOrderButton from "./CloseOrderButton";
+import DeleteOrderButton from "./DeleteOrderButton";
 import ProviderDeliveryForm from "./ProviderDeliveryForm";
 import DeleteDeliveryButton from "./DeleteDeliveryButton";
 import IncomingPanel from "./IncomingPanel";
@@ -104,6 +105,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && order.totalDelivered >= order.totalQuantity && (
             <CloseOrderButton id={order.id} />
           )}
+          <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
         </div>
       </div>
 

@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { logActivity } from "@/lib/logger";
 
 export async function createProviderDelivery(data: {
   orderService_id: number;
@@ -87,6 +88,7 @@ export async function createProviderDeliveryBatch(data: {
     );
 
     revalidatePath(`/admin/orders/${orderService.order.id}`);
+    await logActivity("REGISTER_OP", `OP creada para pedido #${orderService.order.id}: ${sizes.map(s => `${s.size} ${s.quantity}u`).join(", ")}`);
     return { success: true };
   } catch (error: any) {
     console.error(error);

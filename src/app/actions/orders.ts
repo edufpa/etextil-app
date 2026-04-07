@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "@/lib/company";
+import { logActivity } from "@/lib/logger";
 
 function deriveOrderStatus(currentStatus: string, totalDelivered: number, totalQuantity: number) {
   if (currentStatus === "CERRADO" || currentStatus === "CANCELADO") return currentStatus;
@@ -112,10 +113,29 @@ export async function createOrder(data: {
     }
 
     revalidatePath("/admin/orders");
+    await logActivity("CREATE_ORDER", `Pedido creado: ${data.garment} ${data.color}, ${data.totalQuantity} u.`);
     return { success: true };
   } catch (error) {
     console.error("Error creating order:", error);
     return { error: "Error al crear el pedido. Verifica el número de pedido único." };
+  }
+}
+
+export async function deleteOrder(orderId: number) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { orderNumber: true, garment: true, totalQuantity: true },
+    });
+    if (!order) return { error: "Pedido no encontrado." };
+
+    await prisma.order.delete({ where: { id: orderId } });
+
+    await logActivity("DELETE_ORDER", `Pedido eliminado: ${order.orderNumber} — ${order.garment}, ${order.totalQuantity} u.`);
+    revalidatePath("/admin/orders");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al eliminar el pedido." };
   }
 }
 

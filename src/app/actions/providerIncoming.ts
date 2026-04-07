@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { logActivity } from "@/lib/logger";
 
 export async function createProviderIncoming(data: {
   providerDelivery_id: number;
@@ -38,6 +39,7 @@ export async function createProviderIncoming(data: {
 
     revalidatePath(`/admin/orders/${data.orderId}`);
     revalidatePath(`/admin/providers`);
+    await logActivity("REGISTER_INGRESO", `Ingreso OP #${data.providerDelivery_id}: ${data.quantity} u. — Pedido #${data.orderId}`);
     return { success: true };
   } catch (e: any) {
     return { error: e.message || "Error al registrar el ingreso." };

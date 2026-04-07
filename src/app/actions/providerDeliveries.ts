@@ -88,7 +88,7 @@ export async function createProviderDeliveryBatch(data: {
     );
 
     revalidatePath(`/admin/orders/${orderService.order.id}`);
-    await logActivity("REGISTER_OP", `OP creada para pedido #${orderService.order.id}: ${sizes.map(s => `${s.size} ${s.quantity}u`).join(", ")}`);
+    await logActivity("REGISTER_OP", `OP creada para pedido #${orderService.order.id}: ${validSizes.map(s => `${s.size} ${s.quantity}u`).join(", ")}`);
     return { success: true };
   } catch (error: any) {
     console.error(error);

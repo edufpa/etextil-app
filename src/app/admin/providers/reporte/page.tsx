@@ -3,114 +3,84 @@ import Link from "next/link";
 import { ArrowLeft, BarChart2, Truck } from "lucide-react";
 import styles from "../../services/services.module.css";
 import { companyFilter } from "@/lib/company";
+import { Suspense } from "react";
+import ReporteTalleresFilters from "./ReporteTalleresFilters";
 
 export const dynamic = "force-dynamic";
 
-type ServiceTotals = {
-  sent: number;
-  received: number;
-  pending: number;
-};
+type SearchParams = Promise<{ provider?: string; service?: string; pending?: string }>;
 
-type ProviderRow = {
-  providerId: number;
-  businessName: string;
-  sent: number;
-  received: number;
-  pending: number;
-  services: Record<string, ServiceTotals>;
-};
-
-export default async function ProvidersGlobalReportPage() {
+export default async function ProvidersGlobalReportPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
   const filter = await companyFilter();
-  const [deliveries, openServicesByProvider] = await Promise.all([
+
+  const [deliveries, allServices, allProviders] = await Promise.all([
     prisma.providerDelivery.findMany({
       include: {
+        incomings: true,
         provider: { select: { id: true, businessName: true } },
         orderService: {
           include: {
-            service: { select: { name: true, trackBySize: true } },
-            order: {
-              select: {
-                id: true,
-                orderNumber: true,
-                client: { select: { name: true } },
-              },
-            },
+            service: { select: { name: true } },
+            order: { select: { id: true, orderNumber: true, client: { select: { name: true } } } },
           },
         },
       },
       where: { provider: { ...filter } },
       orderBy: { date: "desc" },
     }),
-    prisma.orderService.findMany({
-      where: { provider_id: { not: null }, provider: { ...filter } },
-      include: {
-        provider: { select: { businessName: true } },
-        service: { select: { name: true } },
-        deliveries: { select: { quantity: true } },
-      },
-    }),
+    prisma.service.findMany({ where: { status: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
+    prisma.provider.findMany({ where: { status: true, ...filter }, orderBy: { businessName: "asc" }, select: { id: true, businessName: true } }),
   ]);
+
+  type ProviderRow = {
+    providerId: number;
+    businessName: string;
+    sent: number;
+    received: number;
+    pending: number;
+    services: Record<string, { sent: number; received: number; pending: number }>;
+  };
 
   const byProvider = new Map<number, ProviderRow>();
 
-  for (const delivery of deliveries) {
-    const providerId = delivery.provider.id as number;
-    const serviceName = delivery.orderService.service.name as string;
+  for (const d of deliveries) {
+    const inQty = d.incomings.reduce((a, i) => a + i.quantity, 0);
+    const pendingQty = d.quantity - inQty;
+    const pId = d.provider.id as number;
+    const sName = d.orderService.service.name as string;
 
-    if (!byProvider.has(providerId)) {
-      byProvider.set(providerId, {
-        providerId,
-        businessName: delivery.provider.businessName as string,
-        sent: 0,
-        received: 0,
-        pending: 0,
-        services: {},
-      });
+    if (!byProvider.has(pId)) {
+      byProvider.set(pId, { providerId: pId, businessName: d.provider.businessName as string, sent: 0, received: 0, pending: 0, services: {} });
     }
+    const row = byProvider.get(pId)!;
+    row.sent += d.quantity;
+    row.received += inQty;
+    row.pending += pendingQty;
 
-    const providerRow = byProvider.get(providerId)!;
-    providerRow.sent += delivery.quantity;
-    providerRow.received += delivery.quantity;
-    providerRow.pending += 0;
-
-    if (!providerRow.services[serviceName]) {
-      providerRow.services[serviceName] = { sent: 0, received: 0, pending: 0 };
-    }
-    providerRow.services[serviceName].sent += delivery.quantity;
-    providerRow.services[serviceName].received += delivery.quantity;
-    providerRow.services[serviceName].pending += 0;
+    if (!row.services[sName]) row.services[sName] = { sent: 0, received: 0, pending: 0 };
+    row.services[sName].sent += d.quantity;
+    row.services[sName].received += inQty;
+    row.services[sName].pending += pendingQty;
   }
 
-  for (const svc of openServicesByProvider) {
-    if (!svc.provider_id) continue;
-    if (!byProvider.has(svc.provider_id)) {
-      byProvider.set(svc.provider_id, {
-        providerId: svc.provider_id,
-        businessName: svc.provider?.businessName || "Taller",
-        sent: 0,
-        received: 0,
-        pending: 0,
-        services: {},
-      });
-    }
-    const delivered = svc.deliveries.reduce((sum, d) => sum + d.quantity, 0);
-    const pending = Math.max(0, svc.requiredQuantity - delivered);
-    const row = byProvider.get(svc.provider_id)!;
-    row.pending += pending;
-    const serviceName = svc.service.name;
-    if (!row.services[serviceName]) {
-      row.services[serviceName] = { sent: 0, received: 0, pending: 0 };
-    }
-    row.services[serviceName].pending += pending;
+  let reportRows = [...byProvider.values()].sort((a, b) => b.pending - a.pending);
+
+  // Apply filters
+  if (params.provider) {
+    const pid = parseInt(params.provider, 10);
+    reportRows = reportRows.filter((r) => r.providerId === pid);
+  }
+  if (params.service) {
+    reportRows = reportRows.filter((r) => params.service! in r.services);
+  }
+  if (params.pending === "1") {
+    reportRows = reportRows.filter((r) => r.pending > 0);
   }
 
-  const reportRows = [...byProvider.values()].sort((a, b) => b.pending - a.pending);
-
-  const totalSent = reportRows.reduce((sum, row) => sum + row.sent, 0);
-  const totalReceived = reportRows.reduce((sum, row) => sum + row.received, 0);
-  const totalPending = reportRows.reduce((sum, row) => sum + row.pending, 0);
+  const totalSent = reportRows.reduce((s, r) => s + r.sent, 0);
+  const totalReceived = reportRows.reduce((s, r) => s + r.received, 0);
+  const totalPending = reportRows.reduce((s, r) => s + r.pending, 0);
 
   return (
     <div>
@@ -128,22 +98,26 @@ export default async function ProvidersGlobalReportPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "1rem", margin: "1.5rem 0" }}>
         <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Enviado</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Total Enviado</div>
           <div style={{ fontSize: "2rem", fontWeight: 800, color: "var(--primary)", marginTop: "0.25rem" }}>{totalSent}</div>
         </div>
         <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Recibido</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>Total Recibido</div>
           <div style={{ fontSize: "2rem", fontWeight: 800, color: "green", marginTop: "0.25rem" }}>{totalReceived}</div>
         </div>
         <div style={{ background: totalPending > 0 ? "#fff3e0" : "var(--card-bg)", border: `1px solid ${totalPending > 0 ? "orange" : "var(--card-border)"}`, borderRadius: "var(--radius)", padding: "1.25rem" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>En Proceso</div>
+          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", fontWeight: 600, textTransform: "uppercase" }}>En Proceso</div>
           <div style={{ fontSize: "2rem", fontWeight: 800, color: totalPending > 0 ? "orange" : "var(--text-muted)", marginTop: "0.25rem" }}>{totalPending}</div>
         </div>
       </div>
 
+      <Suspense fallback={null}>
+        <ReporteTalleresFilters services={allServices} providers={allProviders} />
+      </Suspense>
+
       <div className={styles.tableContainer}>
         {reportRows.length === 0 ? (
-          <div className={styles.emptyState}>No hay trabajos registrados en talleres.</div>
+          <div className={styles.emptyState}>No hay talleres con los filtros seleccionados.</div>
         ) : (
           <table className={styles.table}>
             <thead>
@@ -152,17 +126,15 @@ export default async function ProvidersGlobalReportPage() {
                 <th style={{ textAlign: "center" }}>Enviado</th>
                 <th style={{ textAlign: "center" }}>Recibido</th>
                 <th style={{ textAlign: "center" }}>En Proceso</th>
-                <th>Servicios / Detalle</th>
+                <th>Servicios</th>
                 <th>Acción</th>
               </tr>
             </thead>
             <tbody>
               {reportRows.map((row) => {
-                const servicesSummary = Object.entries(row.services).sort((a, b) => b[1].received - a[1].received);
-                const providerDeliveries = deliveries
-                  .filter((d) => d.provider_id === row.providerId)
-                  .slice(0, 5);
-
+                const servicesSummary = Object.entries(row.services).filter(
+                  ([name]) => !params.service || name === params.service
+                );
                 return (
                   <tr key={row.providerId}>
                     <td>
@@ -173,16 +145,17 @@ export default async function ProvidersGlobalReportPage() {
                     </td>
                     <td style={{ textAlign: "center", color: "var(--primary)", fontWeight: 700 }}>{row.sent}</td>
                     <td style={{ textAlign: "center", color: "green", fontWeight: 700 }}>{row.received}</td>
-                    <td style={{ textAlign: "center", color: row.pending > 0 ? "orange" : "var(--text-muted)", fontWeight: 800 }}>{row.pending}</td>
-                    <td style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-                        <div>
-                          {servicesSummary.map(([name, data]) => `${name}: ${data.received}`).join(" · ")}
-                        </div>
-                        {providerDeliveries.map((d) => (
-                          <div key={d.id}>
-                            Pedido {d.orderService.order.orderNumber} · {d.orderService.service.name} · {d.quantity} u.
-                            {d.size ? ` · ${d.size}` : ""} · {new Date(d.date).toLocaleDateString()}
+                    <td style={{ textAlign: "center", color: row.pending > 0 ? "orange" : "var(--text-muted)", fontWeight: 800 }}>{row.pending > 0 ? row.pending : "✓"}</td>
+                    <td style={{ fontSize: "0.82rem" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
+                        {servicesSummary.map(([name, data]) => (
+                          <div key={name}>
+                            <strong>{name}:</strong>{" "}
+                            <span style={{ color: "var(--primary)" }}>Env {data.sent}</span>{" · "}
+                            <span style={{ color: "green" }}>Rec {data.received}</span>{" · "}
+                            <span style={{ color: data.pending > 0 ? "orange" : "var(--text-muted)", fontWeight: data.pending > 0 ? 700 : 400 }}>
+                              {data.pending > 0 ? `${data.pending} pend.` : "✓"}
+                            </span>
                           </div>
                         ))}
                       </div>

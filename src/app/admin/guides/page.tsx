@@ -2,11 +2,27 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Plus, FileText } from "lucide-react";
 import styles from "../services/services.module.css";
+import { Suspense } from "react";
+import GuideFilters from "./GuideFilters";
 
 export const dynamic = 'force-dynamic';
-export default async function GuidesPage() {
+
+type SearchParams = Promise<{ status?: string; from?: string; to?: string }>;
+
+export default async function GuidesPage({ searchParams }: { searchParams: SearchParams }) {
+  const params = await searchParams;
+
+  const where: any = {};
+  if (params.status) where.status = params.status;
+  if (params.from || params.to) {
+    where.date = {};
+    if (params.from) where.date.gte = new Date(params.from);
+    if (params.to) where.date.lte = new Date(params.to + "T23:59:59");
+  }
+
   const guides = await prisma.guide.findMany({
     orderBy: { createdAt: "desc" },
+    where,
     include: {
       details: {
         include: {
@@ -26,16 +42,24 @@ export default async function GuidesPage() {
         </Link>
       </div>
 
+      <Suspense fallback={null}>
+        <GuideFilters />
+      </Suspense>
+
+      <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>
+        {guides.length} despacho{guides.length !== 1 ? "s" : ""} encontrado{guides.length !== 1 ? "s" : ""}
+      </div>
+
       <div className={styles.tableContainer}>
         {guides.length === 0 ? (
           <div className={styles.emptyState}>
-            No hay despachos registrados.
+            No hay despachos con los filtros seleccionados.
           </div>
         ) : (
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>N° Guía</th>
+                <th>N° Despacho</th>
                 <th>Fecha</th>
                 <th>Cliente(s)</th>
                 <th>Pedidos / Tallas</th>
@@ -47,11 +71,7 @@ export default async function GuidesPage() {
             <tbody>
               {guides.map((g: any) => {
                 const totalDelivered = g.details.reduce((acc: number, d: any) => acc + d.deliveredQuantity, 0);
-
-                // Obtener clientes únicos
                 const clientNames = [...new Set(g.details.map((d: any) => d.order.client.name))] as string[];
-
-                // Agrupar por pedido > talla
                 const byOrder = new Map<string, { orderNumber: string; sizes: Map<string, number> }>();
                 for (const d of g.details) {
                   if (!byOrder.has(d.order.orderNumber)) {
@@ -69,7 +89,7 @@ export default async function GuidesPage() {
                     </td>
                     <td>
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-                        {clientNames.map(name => (
+                        {clientNames.map((name: string) => (
                           <span key={name} style={{ fontWeight: 600, fontSize: "0.9rem" }}>{name}</span>
                         ))}
                       </div>

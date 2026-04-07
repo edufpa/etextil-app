@@ -39,6 +39,7 @@ export async function createProviderIncoming(data: {
 
     revalidatePath(`/admin/orders/${data.orderId}`);
     revalidatePath(`/admin/providers`);
+    revalidatePath(`/admin/providers/ops`);
     await logActivity("REGISTER_INGRESO", `Ingreso OP #${data.providerDelivery_id}: ${data.quantity} u. — Pedido #${data.orderId}`);
     return { success: true };
   } catch (e: any) {
@@ -50,6 +51,7 @@ export async function deleteProviderIncoming(id: number, orderId: number) {
   try {
     await prisma.providerIncoming.delete({ where: { id } });
     revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath(`/admin/providers/ops`);
     return { success: true };
   } catch {
     return { error: "Error al eliminar el ingreso." };

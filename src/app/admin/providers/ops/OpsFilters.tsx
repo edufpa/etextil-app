@@ -33,6 +33,13 @@ export default function OpsFilters({ services, providers }: Props) {
   return (
     <div style={filterBarStyle}>
       <div style={fieldStyle}>
+        <label style={labelStyle}>Estado</label>
+        <select value={searchParams.get("estado") || "abiertas"} onChange={(e) => update("estado", e.target.value === "abiertas" ? "" : e.target.value)}>
+          <option value="abiertas">Solo abiertas</option>
+          <option value="todas">Todas las OPs</option>
+        </select>
+      </div>
+      <div style={fieldStyle}>
         <label style={labelStyle}>Servicio</label>
         <select value={searchParams.get("service") || ""} onChange={(e) => update("service", e.target.value)}>
           <option value="">Todos los servicios</option>

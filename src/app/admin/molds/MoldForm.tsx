@@ -3,9 +3,17 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createMold, updateMold } from "@/app/actions/molds";
-import styles from "../services/services.module.css";
+import styles from "../services/form.module.css";
+import { Box, Save } from "lucide-react";
 
-type MoldData = { id: number; code: string; name: string; description: string | null; notes: string | null; status: boolean };
+type MoldData = {
+  id: number;
+  code: string;
+  name: string;
+  description: string | null;
+  notes: string | null;
+  status: boolean;
+};
 
 export default function MoldForm({ mold }: { mold?: MoldData }) {
   const router = useRouter();
@@ -18,12 +26,11 @@ export default function MoldForm({ mold }: { mold?: MoldData }) {
     setError("");
     const fd = new FormData(e.currentTarget);
     const data = {
-      code: fd.get("code") as string,
+      code: (fd.get("code") as string).toUpperCase().trim(),
       name: fd.get("name") as string,
       description: fd.get("description") as string,
       notes: fd.get("notes") as string,
     };
-
     const res = mold ? await updateMold(mold.id, data) : await createMold(data);
     setLoading(false);
     if ("error" in res && res.error) {
@@ -34,47 +41,87 @@ export default function MoldForm({ mold }: { mold?: MoldData }) {
   }
 
   return (
-    <div style={{ maxWidth: "640px", margin: "0 auto" }}>
-      <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-        <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "1.25rem" }}>
-          {error && <div style={{ background: "#fee2e2", color: "#dc2626", padding: "0.75rem 1rem", borderRadius: "6px", fontSize: "0.875rem" }}>{error}</div>}
+    <form
+      className={styles.formCard}
+      onSubmit={handleSubmit}
+      style={{ maxWidth: "680px" }}
+    >
+      {error && <div className={styles.error}>{error}</div>}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "1rem" }}>
-            <div>
-              <label className={styles.label}>Código *</label>
-              <input name="code" defaultValue={mold?.code || ""} required placeholder="MOL-001"
-                className={styles.input} style={{ fontFamily: "monospace", textTransform: "uppercase" }} />
-            </div>
-            <div>
-              <label className={styles.label}>Nombre *</label>
-              <input name="name" defaultValue={mold?.name || ""} required placeholder="Nombre del molde"
-                className={styles.input} />
-            </div>
-          </div>
-
-          <div>
-            <label className={styles.label}>Descripción</label>
-            <input name="description" defaultValue={mold?.description || ""} placeholder="Descripción breve"
-              className={styles.input} />
-          </div>
-
-          <div>
-            <label className={styles.label}>Notas</label>
-            <textarea name="notes" defaultValue={mold?.notes || ""} placeholder="Observaciones adicionales..."
-              className={styles.input} rows={3} style={{ resize: "vertical" }} />
-          </div>
-
-          <div style={{ display: "flex", gap: "1rem", justifyContent: "flex-end" }}>
-            <button type="button" onClick={() => router.push("/admin/molds")}
-              style={{ padding: "0.6rem 1.25rem", border: "1px solid var(--card-border)", borderRadius: "6px", background: "transparent", cursor: "pointer", color: "var(--text-color)" }}>
-              Cancelar
-            </button>
-            <button type="submit" disabled={loading} className={styles.addBtn}>
-              {loading ? "Guardando..." : mold ? "Actualizar" : "Crear Molde"}
-            </button>
-          </div>
-        </form>
+      {/* Section: Identificación */}
+      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", paddingBottom: "0.75rem", borderBottom: "1px solid var(--card-border)" }}>
+        <Box size={17} style={{ color: "var(--primary)" }} />
+        <span style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--foreground)" }}>Identificación del Molde</span>
       </div>
-    </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr", gap: "1.25rem" }}>
+        <div className={styles.formGroup}>
+          <label>Código *</label>
+          <input
+            name="code"
+            type="text"
+            defaultValue={mold?.code ?? ""}
+            required
+            placeholder="MOL-001"
+            style={{ fontFamily: "monospace", textTransform: "uppercase", letterSpacing: "0.05em" }}
+          />
+          <span className={styles.helpText}>Identificador único del molde</span>
+        </div>
+        <div className={styles.formGroup}>
+          <label>Nombre *</label>
+          <input
+            name="name"
+            type="text"
+            defaultValue={mold?.name ?? ""}
+            required
+            placeholder="Ej: Camisa Slim Fit, Polo Cuello V..."
+          />
+        </div>
+      </div>
+
+      <div className={styles.formGroup}>
+        <label>Descripción</label>
+        <input
+          name="description"
+          type="text"
+          defaultValue={mold?.description ?? ""}
+          placeholder="Descripción breve del molde (tela, tipo de corte, etc.)"
+        />
+      </div>
+
+      <div className={styles.formGroup}>
+        <label>Notas adicionales</label>
+        <textarea
+          name="notes"
+          defaultValue={mold?.notes ?? ""}
+          placeholder="Observaciones, instrucciones especiales, historial de modificaciones..."
+          rows={4}
+          style={{ resize: "vertical" }}
+        />
+      </div>
+
+      <div className={styles.actions} style={{ gap: "0.75rem" }}>
+        <button
+          type="button"
+          onClick={() => router.push("/admin/molds")}
+          style={{
+            padding: "0.75rem 1.5rem",
+            border: "1px solid var(--card-border)",
+            borderRadius: "var(--radius)",
+            background: "transparent",
+            cursor: "pointer",
+            color: "var(--foreground)",
+            fontWeight: 500,
+            fontSize: "0.9rem",
+          }}
+        >
+          Cancelar
+        </button>
+        <button type="submit" disabled={loading} className={styles.submitBtn}>
+          <Save size={16} />
+          {loading ? "Guardando..." : mold ? "Actualizar Molde" : "Crear Molde"}
+        </button>
+      </div>
+    </form>
   );
 }

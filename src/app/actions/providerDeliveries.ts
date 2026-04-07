@@ -96,10 +96,39 @@ export async function createProviderDeliveryBatch(data: {
   }
 }
 
+export async function updateProviderDelivery(id: number, orderId: number, data: {
+  quantity: number;
+  date: Date;
+  notes?: string;
+}) {
+  try {
+    // Validate quantity is not below already-received incomings
+    const delivery = await prisma.providerDelivery.findUnique({
+      where: { id },
+      include: { incomings: { select: { quantity: true } } },
+    });
+    if (!delivery) return { error: "OP no encontrada." };
+    if (data.quantity <= 0) return { error: "La cantidad debe ser mayor a 0." };
+
+    const alreadyIn = delivery.incomings.reduce((s, i) => s + i.quantity, 0);
+    if (data.quantity < alreadyIn) {
+      return { error: `Ya se ingresaron ${alreadyIn} u. No se puede reducir a ${data.quantity}.` };
+    }
+
+    await prisma.providerDelivery.update({ where: { id }, data });
+    revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath(`/admin/providers/ops`);
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al actualizar la OP." };
+  }
+}
+
 export async function deleteProviderDelivery(id: number, orderId: number) {
   try {
     await prisma.providerDelivery.delete({ where: { id } });
     revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath(`/admin/providers/ops`);
     return { success: true };
   } catch (error) {
     return { error: "Error al eliminar la entrega." };

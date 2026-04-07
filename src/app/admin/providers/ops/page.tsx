@@ -6,6 +6,8 @@ import { companyFilter } from "@/lib/company";
 import { Suspense } from "react";
 import OpsFilters from "./OpsFilters";
 import OpsIncomingButton from "./OpsIncomingButton";
+import OpsEditButton from "./OpsEditButton";
+import OpsDeleteButton from "./OpsDeleteButton";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +72,8 @@ export default async function OpenOpsPage({ searchParams }: { searchParams: Sear
       id: d.id,
       size: d.size,
       date: d.date,
+      dateStr: d.date.toISOString().split("T")[0],
+      notes: d.notes || "",
       quantity: d.quantity,
       received: d.received,
       pending: d.pending,
@@ -199,22 +203,31 @@ export default async function OpenOpsPage({ searchParams }: { searchParams: Sear
                               ) : op.pending}
                             </td>
                             <td>
-                              {isClosed ? (
-                                <Link href={`/admin/orders/${op.orderId}`} style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
-                                  Ver pedido →
-                                </Link>
-                              ) : (
-                                <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                              <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                                {!isClosed && (
                                   <OpsIncomingButton
                                     deliveryId={op.id}
                                     orderId={op.orderId}
                                     pending={op.pending}
                                   />
-                                  <Link href={`/admin/orders/${op.orderId}`} style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
-                                    Ver pedido →
-                                  </Link>
-                                </div>
-                              )}
+                                )}
+                                <OpsEditButton
+                                  deliveryId={op.id}
+                                  orderId={op.orderId}
+                                  currentQty={op.quantity}
+                                  currentDate={op.dateStr}
+                                  currentNotes={op.notes}
+                                  minQty={op.received}
+                                />
+                                <OpsDeleteButton
+                                  deliveryId={op.id}
+                                  orderId={op.orderId}
+                                  hasIncomings={op.received > 0}
+                                />
+                                <Link href={`/admin/orders/${op.orderId}`} style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                                  Ver pedido →
+                                </Link>
+                              </div>
                             </td>
                           </tr>
                         );

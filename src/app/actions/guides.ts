@@ -92,3 +92,58 @@ export async function createGuide(data: {
     return { error: error.message || "Error al crear la guía." };
   }
 }
+
+export async function updateGuideHeader(id: number, data: {
+  sunatNumber: string;
+  date: Date;
+  notes?: string;
+}) {
+  try {
+    await prisma.guide.update({ where: { id }, data });
+    revalidatePath(`/admin/guides/${id}`);
+    revalidatePath("/admin/guides");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al actualizar la guía." };
+  }
+}
+
+export async function deleteGuide(id: number) {
+  try {
+    await prisma.$transaction(async (tx) => {
+      // Get affected orders before deleting
+      const details = await tx.guideDetail.findMany({
+        where: { guide_id: id },
+        select: { order_id: true },
+      });
+      const affectedOrderIds = [...new Set(details.map((d) => d.order_id))];
+
+      // Delete guide (cascades to GuideDetails)
+      await tx.guide.delete({ where: { id } });
+
+      // Recalculate status for each affected order
+      for (const orderId of affectedOrderIds) {
+        const order = await tx.order.findUnique({
+          where: { id: orderId },
+          include: { guides: true, sizes: true },
+        });
+        if (!order || order.status === "CERRADO" || order.status === "CANCELADO") continue;
+
+        const totalDelivered = order.guides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
+        const totalQuantity = order.sizes.reduce((acc, s) => acc + s.quantity, 0);
+
+        let newStatus = "PENDIENTE";
+        if (totalDelivered >= totalQuantity) newStatus = "ENTREGADO";
+        else if (totalDelivered > 0) newStatus = "PARCIALMENTE ENTREGADO";
+
+        await tx.order.update({ where: { id: orderId }, data: { status: newStatus } });
+      }
+    });
+
+    revalidatePath("/admin/guides");
+    revalidatePath("/admin/orders");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al eliminar la guía." };
+  }
+}

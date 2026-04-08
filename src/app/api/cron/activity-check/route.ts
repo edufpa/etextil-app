@@ -61,11 +61,13 @@ export async function GET(req: NextRequest) {
   }
 
   // No activity — send alert email
-  const to = process.env.ALERT_EMAIL_TO;
-  if (!to) {
+  const toRaw = process.env.ALERT_EMAIL_TO;
+  if (!toRaw) {
     console.error("[cron] ALERT_EMAIL_TO not configured.");
     return NextResponse.json({ error: "ALERT_EMAIL_TO not set" }, { status: 500 });
   }
+  // Support comma-separated list of recipients
+  const to = toRaw.split(",").map((e) => e.trim()).filter(Boolean);
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://etextil-app.vercel.app";
 
@@ -157,6 +159,6 @@ export async function GET(req: NextRequest) {
     `,
   });
 
-  console.log(`[cron] Alert sent for ${dayLabel} to ${to}`);
+  console.log(`[cron] Alert sent for ${dayLabel} to ${to.join(", ")}`);
   return NextResponse.json({ ok: true, alert: true, day: dayLabel });
 }

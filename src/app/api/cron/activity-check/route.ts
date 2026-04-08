@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
 
   await resend.emails.send({
     from: process.env.ALERT_EMAIL_FROM ?? "Etextil <onboarding@resend.dev>",
-    to: [to],
+    to,
     subject: `⚠️ Sin actividad el ${dayLabel} — Etextil`,
     html: `
 <!DOCTYPE html>

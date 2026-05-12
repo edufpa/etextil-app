@@ -16,7 +16,7 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
 
   const where: any = { ...filter };
   if (params.status === "activos") {
-    where.status = { notIn: ["CERRADO", "CANCELADO"] };
+    where.status = { notIn: ["ENTREGADO", "CANCELADO"] };
   } else if (params.status) {
     where.status = params.status;
   }
@@ -99,10 +99,14 @@ export default async function OrdersPage({ searchParams }: { searchParams: Searc
                     </td>
                     <td>
                       <span className={styles.badge} style={{
-                        background: displayStatus === "CERRADO" ? "#333" :
-                          displayStatus === "PENDIENTE" ? "orange" :
-                          displayStatus === "ENTREGADO" ? "green" : "blue",
+                        background:
+                          displayStatus === "ENTREGADO" ? "green" :
+                          displayStatus === "PARCIALMENTE ENTREGADO" ? "#2563eb" :
+                          displayStatus === "EN PROCESO" ? "#7c3aed" :
+                          displayStatus === "CANCELADO" ? "#dc2626" :
+                          "orange",
                         color: "white",
+                        fontSize: displayStatus === "PARCIALMENTE ENTREGADO" ? "0.65rem" : undefined,
                       }}>
                         {displayStatus}
                       </span>

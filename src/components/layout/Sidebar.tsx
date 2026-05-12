@@ -33,9 +33,9 @@ export default function Sidebar() {
 
   return (
     <aside className={styles.sidebar}>
-      <div className={styles.logo}>
+      <Link href="/admin" className={styles.logo} style={{ textDecoration: "none" }}>
         <h1>SIAT</h1>
-      </div>
+      </Link>
 
       {/* Main navigation */}
       <nav className={styles.nav}>

@@ -32,9 +32,11 @@ export default function OrderFilters() {
         <label style={labelStyle}>Estado</label>
         <select value={searchParams.get("status") || ""} onChange={(e) => update("status", e.target.value)}>
           <option value="">Todos</option>
-          <option value="activos">Activos (no cerrados)</option>
-          <option value="ABIERTO">Abierto</option>
-          <option value="CERRADO">Cerrado</option>
+          <option value="activos">Activos (en curso)</option>
+          <option value="PENDIENTE">Pendiente</option>
+          <option value="EN PROCESO">En proceso</option>
+          <option value="PARCIALMENTE ENTREGADO">Parcialmente entregado</option>
+          <option value="ENTREGADO">Entregado</option>
           <option value="CANCELADO">Cancelado</option>
         </select>
       </div>

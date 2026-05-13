@@ -78,7 +78,7 @@ export async function createPedido(data: {
     });
   });
 
-  await logActivity(`Pedido ${pedido.pedidoNumber} creado`, companyId);
+  await logActivity(`Pedido ${pedido.pedidoNumber} creado`, `company:${companyId ?? "global"}`);
   revalidatePath("/admin/pedidos");
   return pedido;
 }
@@ -128,7 +128,7 @@ export async function generarOPs(pedidoId: number) {
     return created;
   });
 
-  await logActivity(`${ops.length} OPs generadas desde Pedido ${pedido.pedidoNumber}`, companyId);
+  await logActivity(`${ops.length} OPs generadas desde Pedido ${pedido.pedidoNumber}`, `company:${companyId ?? "global"}`);
   revalidatePath("/admin/pedidos");
   revalidatePath(`/admin/pedidos/${pedidoId}`);
   revalidatePath("/admin/orders");
@@ -142,6 +142,6 @@ export async function deletePedido(pedidoId: number) {
   if (pedido.ops.length > 0) throw new Error("No se puede eliminar un pedido con OPs generadas");
 
   await prisma.pedido.delete({ where: { id: pedidoId } });
-  await logActivity(`Pedido ${pedido.pedidoNumber} eliminado`, companyId);
+  await logActivity(`Pedido ${pedido.pedidoNumber} eliminado`, `company:${companyId ?? "global"}`);
   revalidatePath("/admin/pedidos");
 }

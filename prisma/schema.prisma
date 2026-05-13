@@ -21,18 +21,31 @@ model Company {
   orders    Order[]
   molds     Mold[]
   garments  Garment[]
+  pedidos   Pedido[]
 }
 
 model AppUser {
-  id           Int       @id @default(autoincrement())
-  username     String    @unique
-  passwordHash String
-  role         String    @default("COMPANY_ADMIN") // GLOBAL_ADMIN | COMPANY_ADMIN
-  company_id   Int?
-  company      Company?  @relation(fields: [company_id], references: [id])
-  status       Boolean   @default(true)
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 Int                  @id @default(autoincrement())
+  username           String               @unique
+  email              String?              @unique
+  passwordHash       String
+  role               String               @default("COMPANY_ADMIN") // GLOBAL_ADMIN | COMPANY_ADMIN
+  company_id         Int?
+  company            Company?             @relation(fields: [company_id], references: [id])
+  status             Boolean              @default(true)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  passwordResets     PasswordResetToken[]
+}
+
+model PasswordResetToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  user_id   Int
+  user      AppUser  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
 }
 
 model Service {
@@ -87,6 +100,7 @@ model Client {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
   Order      Order[]
+  pedidos    Pedido[]
 }
 
 model Order {
@@ -102,6 +116,8 @@ model Order {
   status         String   @default("PENDIENTE") // PENDIENTE, EN PROCESO, PARCIALMENTE ENTREGADO, ENTREGADO, CERRADO, CANCELADO
   company_id     Int?
   company        Company? @relation(fields: [company_id], references: [id])
+  pedido_id      Int?
+  pedido         Pedido?  @relation(fields: [pedido_id], references: [id])
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -245,6 +261,52 @@ model Color {
   status    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Pedido del cliente — agrupa múltiples items (prenda+color+tallas) y genera OPs
+model Pedido {
+  id           Int          @id @default(autoincrement())
+  pedidoNumber String
+  client_id    Int
+  client       Client       @relation(fields: [client_id], references: [id])
+  date         DateTime
+  notes        String?
+  status       String       @default("BORRADOR") // BORRADOR, CONFIRMADO, EN PROCESO, COMPLETADO
+  company_id   Int?
+  company      Company?     @relation(fields: [company_id], references: [id])
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  items        PedidoItem[]
+  ops          Order[]
+
+  @@unique([company_id, pedidoNumber])
+}
+
+// Línea de un pedido: una prenda en un color con desglose de tallas
+model PedidoItem {
+  id              Int              @id @default(autoincrement())
+  pedido_id       Int
+  pedido          Pedido           @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+  garment         String
+  color           String
+  sku             String?
+  precioUnitario  Decimal?         @db.Decimal(12, 2)
+  moneda          String           @default("PEN")
+  notes           String?
+  sizes           PedidoItemSize[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+}
+
+// Cantidad por talla dentro de un item de pedido
+model PedidoItemSize {
+  id              Int        @id @default(autoincrement())
+  pedidoItem_id   Int
+  pedidoItem      PedidoItem @relation(fields: [pedidoItem_id], references: [id], onDelete: Cascade)
+  size            String
+  quantity        Int
+  precioUnitario  Decimal?   @db.Decimal(12, 2)
+  createdAt       DateTime   @default(now())
 }
 
 model ActivityLog {

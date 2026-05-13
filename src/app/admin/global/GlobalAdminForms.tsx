@@ -6,7 +6,7 @@ import { createCompany, createCompanyUser, deleteAppUser, updateUserPassword } f
 import { Building2, UserPlus, Trash2, KeyRound, X } from "lucide-react";
 
 type Company = { id: number; name: string };
-type AppUser = { id: number; username: string; status: boolean; company: { name: string } | null };
+type AppUser = { id: number; username: string; email: string | null; status: boolean; company: { name: string } | null };
 
 export default function GlobalAdminForms({
   companies,
@@ -23,7 +23,7 @@ export default function GlobalAdminForms({
   const [companyLoading, setCompanyLoading] = useState(false);
 
   const [selectedCompany, setSelectedCompany] = useState(companies[0]?.id || 0);
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [userError, setUserError] = useState("");
   const [userSuccess, setUserSuccess] = useState("");
@@ -57,12 +57,12 @@ export default function GlobalAdminForms({
     setUserSuccess("");
     const fd = new FormData();
     fd.append("company_id", String(selectedCompany));
-    fd.append("username", username);
+    fd.append("email", email);
     fd.append("password", password);
     const res = await createCompanyUser(fd);
     setUserLoading(false);
     if (res?.error) { setUserError(res.error); }
-    else { setUserSuccess("Usuario creado."); setUsername(""); setPassword(""); router.refresh(); }
+    else { setUserSuccess("Usuario creado."); setEmail(""); setPassword(""); router.refresh(); }
   };
 
   const handleDelete = async (id: number, uname: string) => {
@@ -143,7 +143,7 @@ export default function GlobalAdminForms({
             <option value={0}>Selecciona empresa</option>
             {companies.map((c) => (<option key={c.id} value={c.id}>{c.name}</option>))}
           </select>
-          <input type="text" placeholder="Usuario" value={username} onChange={(e) => setUsername(e.target.value)} required autoComplete="off" />
+          <input type="email" placeholder="Correo electrónico" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="off" />
           <input type="password" placeholder="Contraseña" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" />
           <button type="submit" disabled={userLoading || companies.length === 0} style={btn()}>
             {userLoading ? "Creando..." : "Crear usuario"}
@@ -160,7 +160,7 @@ export default function GlobalAdminForms({
           <thead>
             <tr style={{ background: "var(--bg-color)" }}>
               <th style={{ padding: "0.6rem 1rem", textAlign: "left" }}>Empresa</th>
-              <th style={{ padding: "0.6rem 1rem", textAlign: "left" }}>Usuario</th>
+              <th style={{ padding: "0.6rem 1rem", textAlign: "left" }}>Correo</th>
               <th style={{ padding: "0.6rem 1rem", textAlign: "left" }}>Estado</th>
               <th style={{ padding: "0.6rem 1rem", textAlign: "center" }}>Acciones</th>
             </tr>
@@ -169,7 +169,7 @@ export default function GlobalAdminForms({
             {users.map((u) => (
               <tr key={u.id} style={{ borderTop: "1px solid var(--card-border)" }}>
                 <td style={{ padding: "0.65rem 1rem" }}>{u.company?.name || "—"}</td>
-                <td style={{ padding: "0.65rem 1rem", fontWeight: 600 }}>{u.username}</td>
+                <td style={{ padding: "0.65rem 1rem", fontWeight: 600 }}>{u.email || u.username}</td>
                 <td style={{ padding: "0.65rem 1rem", color: u.status ? "green" : "var(--text-muted)" }}>
                   {u.status ? "Activo" : "Inactivo"}
                 </td>

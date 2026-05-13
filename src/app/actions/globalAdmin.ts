@@ -28,14 +28,17 @@ export async function createCompany(formData: FormData) {
 
 export async function createCompanyUser(formData: FormData) {
   await requireGlobalAdmin();
-  const username = String(formData.get("username") || "").trim();
+  const email = String(formData.get("email") || "").trim().toLowerCase();
   const password = String(formData.get("password") || "").trim();
   const companyId = Number(formData.get("company_id"));
-  if (!username || !password || !companyId) return { error: "Completa usuario, contraseña y empresa." };
+  if (!email || !password || !companyId) return { error: "Completa correo, contraseña y empresa." };
+  // derive username from email prefix
+  const username = email.split("@")[0] + "_" + companyId;
   try {
-    await (prisma as any).appUser.create({
+    await prisma.appUser.create({
       data: {
         username,
+        email,
         passwordHash: hashPassword(password),
         role: "COMPANY_ADMIN",
         company_id: companyId,
@@ -45,7 +48,7 @@ export async function createCompanyUser(formData: FormData) {
     revalidatePath("/admin/global");
     return { success: true };
   } catch {
-    return { error: "No se pudo crear el usuario (usuario duplicado)." };
+    return { error: "No se pudo crear el usuario (correo duplicado)." };
   }
 }
 

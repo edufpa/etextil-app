@@ -6,7 +6,7 @@ import styles from "./login.module.css";
 import { Loader2 } from "lucide-react";
 
 export default function LoginForm() {
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -23,7 +23,7 @@ export default function LoginForm() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
 
       const data = await res.json();
@@ -44,15 +44,15 @@ export default function LoginForm() {
     <form onSubmit={handleSubmit} className={styles.form}>
       {error && <div className={styles.error}>{error}</div>}
       <div className={styles.inputGroup}>
-        <label>Usuario</label>
+        <label>Correo electrónico</label>
         <input
-          type="text"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
           required
           autoFocus
           className={styles.input}
-          placeholder="admin"
+          placeholder="correo@ejemplo.com"
         />
       </div>
       <div className={styles.inputGroup}>
@@ -69,6 +69,11 @@ export default function LoginForm() {
       <button type="submit" className={styles.button} disabled={loading}>
         {loading ? <Loader2 className={styles.spinner} /> : "Ingresar al Panel"}
       </button>
+      <div style={{ textAlign: "center", marginTop: "0.5rem" }}>
+        <a href="/forgot-password" style={{ fontSize: "0.82rem", color: "var(--primary)", textDecoration: "none" }}>
+          ¿Olvidaste tu contraseña?
+        </a>
+      </div>
     </form>
   );
 }

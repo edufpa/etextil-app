@@ -11,16 +11,20 @@ import OpsDeleteButton from "./OpsDeleteButton";
 
 export const dynamic = "force-dynamic";
 
-type SearchParams = Promise<{ service?: string; provider?: string; estado?: string }>;
+type SearchParams = Promise<{ service?: string; provider?: string; estado?: string; order?: string }>;
 
 export default async function OpenOpsPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const filter = await companyFilter();
   const showAll = params.estado === "todas";
+  const orderIdFilter = params.order ? parseInt(params.order, 10) : null;
 
   const [deliveries, allServices, allProviders] = await Promise.all([
     prisma.providerDelivery.findMany({
-      where: { provider: { ...filter } },
+      where: {
+        provider: { ...filter },
+        ...(orderIdFilter ? { orderService: { order: { id: orderIdFilter } } } : {}),
+      },
       include: {
         incomings: true,
         provider: { select: { id: true, businessName: true } },
@@ -44,6 +48,13 @@ export default async function OpenOpsPage({ searchParams }: { searchParams: Sear
     prisma.service.findMany({ where: { status: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }),
     prisma.provider.findMany({ where: { status: true, ...filter }, orderBy: { businessName: "asc" }, select: { id: true, businessName: true } }),
   ]);
+
+  const contextOrder = orderIdFilter
+    ? await prisma.order.findUnique({
+        where: { id: orderIdFilter },
+        select: { orderNumber: true, garment: true, color: true, client: { select: { name: true } } },
+      })
+    : null;
 
   const withPending = deliveries.map((d) => {
     const inQty = d.incomings.reduce((s, i) => s + i.quantity, 0);
@@ -95,13 +106,22 @@ export default async function OpenOpsPage({ searchParams }: { searchParams: Sear
     <div>
       <div className={styles.pageHeader}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <Link href="/admin/providers/reporte" style={{ color: "var(--text-muted)" }}>
+          <Link href={contextOrder ? "/admin/orders" : "/admin/providers/reporte"} style={{ color: "var(--text-muted)" }}>
             <ArrowLeft size={20} />
           </Link>
-          <h1 className={styles.title} style={{ marginBottom: 0 }}>
-            <ClipboardList size={22} style={{ display: "inline", marginRight: "0.5rem", verticalAlign: "middle", color: "var(--primary)" }} />
-            OPs {showAll ? "— Historial Completo" : "Abiertas — Servicios en Proceso"}
-          </h1>
+          <div>
+            <h1 className={styles.title} style={{ marginBottom: 0 }}>
+              <ClipboardList size={22} style={{ display: "inline", marginRight: "0.5rem", verticalAlign: "middle", color: "var(--primary)" }} />
+              {contextOrder
+                ? `Operativo — OP ${contextOrder.orderNumber}`
+                : showAll ? "OPs — Historial Completo" : "OPs — Servicios en Proceso"}
+            </h1>
+            {contextOrder && (
+              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
+                {contextOrder.client.name} · {contextOrder.garment} {contextOrder.color}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 

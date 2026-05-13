@@ -1,6 +1,7 @@
 import { User, Building2 } from "lucide-react";
 import styles from "./Header.module.css";
 import LogoutButton from "./LogoutButton";
+import ChangePasswordButton from "./ChangePasswordButton";
 import { getServerSession } from "@/lib/server-session";
 
 export default async function Header() {
@@ -31,6 +32,7 @@ export default async function Header() {
           </div>
           <span>{displayName}</span>
         </div>
+        <ChangePasswordButton />
         <LogoutButton />
       </div>
     </header>

@@ -5,28 +5,42 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 async function ensureGlobalAdmin() {
-  const username = process.env.GLOBAL_ADMIN_USER || "eduardo";
-  const password = process.env.GLOBAL_ADMIN_PASSWORD || "martillo";
-  const existing = await (prisma as any).appUser.findUnique({ where: { username } });
+  const email = "site.eduardo@gmail.com";
+  const username = "site.eduardo";
+  const password = "M@rtillo100";
+
+  const existing = await prisma.appUser.findFirst({
+    where: { OR: [{ email }, { username: "eduardo" }, { username }] },
+  });
+
   if (!existing) {
-    await (prisma as any).appUser.create({
+    await prisma.appUser.create({
       data: {
         username,
+        email,
         passwordHash: hashPassword(password),
         role: "GLOBAL_ADMIN",
         status: true,
       },
+    });
+  } else if (!existing.email && existing.role === "GLOBAL_ADMIN") {
+    // Migrate old global admin: set email
+    await prisma.appUser.update({
+      where: { id: existing.id },
+      data: { email, username },
     });
   }
 }
 
 export async function POST(request: Request) {
   try {
-    const { username, password } = await request.json();
+    const { email, password } = await request.json();
 
     await ensureGlobalAdmin();
-    const user = await (prisma as any).appUser.findUnique({
-      where: { username },
+
+    // Find by email (primary) or username fallback
+    const user = await prisma.appUser.findFirst({
+      where: { OR: [{ email: email?.toLowerCase() }, { username: email }] },
       include: { company: true },
     });
 
@@ -42,6 +56,7 @@ export async function POST(request: Request) {
     const session = await encrypt({
       userId: String(user.id),
       username: user.username,
+      email: user.email || "",
       role: user.role,
       companyId: user.company_id || null,
       companyName: user.company?.name || null,

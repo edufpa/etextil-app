@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { Package, Users, FileText, Truck, TrendingUp } from "lucide-react";
+import { FileText, Truck, Clock, Wrench } from "lucide-react";
 import styles from "./dashboard.module.css";
 import Link from "next/link";
 import { companyFilter } from "@/lib/company";
@@ -40,22 +40,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   };
 
   const [
-    totalActiveOrders,
-    totalPendingGarments,
-    totalClients,
-    totalProviders,
     allProviders,
     providerIncomings,
     guideDetails,
-    totalIncomingsKpi,
+    activeOrdersRaw,
+    allDeliveriesForPending,
   ] = await Promise.all([
-    prisma.order.count({ where: { status: { notIn: ["CERRADO", "CANCELADO"] }, ...filter } }),
-    prisma.order.aggregate({
-      where: { status: { notIn: ["CERRADO", "CANCELADO"] }, ...filter },
-      _sum: { totalQuantity: true },
-    }),
-    prisma.client.count({ where: { status: true, ...filter } }),
-    prisma.provider.count({ where: { status: true, ...filter } }),
     prisma.provider.findMany({
       where: { status: true, ...filter },
       orderBy: { businessName: "asc" },
@@ -67,7 +57,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
         providerDelivery: {
           include: {
             provider: { select: { id: true, businessName: true } },
-            orderService: { include: { service: { select: { name: true } } } },
+            orderService: { include: { service: { select: { id: true, name: true } } } },
           },
         },
       },
@@ -77,24 +67,66 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       where: { guide: { date: { gte: since, lte: today }, status: "ACTIVA" } },
       include: { guide: { select: { date: true } } },
     }),
-    prisma.providerIncoming.aggregate({
-      where: incomingWhere,
-      _sum: { quantity: true },
+    prisma.order.findMany({
+      where: { status: { notIn: ["ENTREGADO", "CANCELADO"] }, ...filter },
+      orderBy: { createdAt: "desc" },
+      include: {
+        client: { select: { name: true } },
+        guides: { select: { deliveredQuantity: true } },
+        services: { select: { deliveries: { select: { quantity: true } } } },
+      },
+    }),
+    prisma.providerDelivery.findMany({
+      where: { provider: { ...filter } },
+      select: {
+        quantity: true,
+        incomings: { select: { quantity: true } },
+        orderService: { select: { service: { select: { id: true, name: true } } } },
+      },
     }),
   ]);
+
+  // Derive status for each active order
+  const activeOrders = activeOrdersRaw.map((o: any) => {
+    const totalDelivered = o.guides.reduce((acc: number, g: any) => acc + g.deliveredQuantity, 0);
+    const sentToWorkshop = o.services.reduce((acc: number, svc: any) =>
+      acc + svc.deliveries.reduce((a: number, d: any) => a + d.quantity, 0), 0);
+    const derivedStatus =
+      totalDelivered >= o.totalQuantity ? "ENTREGADO"
+      : totalDelivered > 0 ? "PARCIALMENTE ENTREGADO"
+      : sentToWorkshop > 0 ? "EN PROCESO"
+      : "PENDIENTE";
+    return { ...o, derivedStatus, totalDelivered, sentToWorkshop };
+  });
+
+  const pendienteOrders = activeOrders.filter((o: any) => o.derivedStatus === "PENDIENTE");
+  const enProcesoOrders = activeOrders.filter((o: any) => o.derivedStatus === "EN PROCESO");
+
+  // Pending by service (all-time)
+  const pendingByService = new Map<string, { id: number; pending: number }>();
+  for (const d of allDeliveriesForPending) {
+    const inQty = d.incomings.reduce((a: number, i: any) => a + i.quantity, 0);
+    const pendingQty = d.quantity - inQty;
+    if (pendingQty <= 0) continue;
+    const svc = d.orderService.service;
+    if (!pendingByService.has(svc.name)) pendingByService.set(svc.name, { id: svc.id, pending: 0 });
+    pendingByService.get(svc.name)!.pending += pendingQty;
+  }
+  const pendingServiceList = [...pendingByService.entries()]
+    .sort((a, b) => b[1].pending - a[1].pending);
 
   // Build days array
   const days: Date[] = [];
   for (let i = 0; i < DAYS; i++) days.push(addDays(since, i));
 
-  // Build matrix: rows = services
-  const serviceMap = new Map<string, Map<string, number>>();
+  // Build matrix: rows = services (name → { id, days })
+  const serviceMap = new Map<string, { id: number; days: Map<string, number> }>();
   for (const inc of providerIncomings) {
-    const svcName = inc.providerDelivery.orderService.service.name;
+    const svc = inc.providerDelivery.orderService.service;
     const dayKey = getDayKey(new Date(inc.date));
-    if (!serviceMap.has(svcName)) serviceMap.set(svcName, new Map());
-    const dayMap = serviceMap.get(svcName)!;
-    dayMap.set(dayKey, (dayMap.get(dayKey) || 0) + inc.quantity);
+    if (!serviceMap.has(svc.name)) serviceMap.set(svc.name, { id: svc.id, days: new Map() });
+    const entry = serviceMap.get(svc.name)!;
+    entry.days.set(dayKey, (entry.days.get(dayKey) || 0) + inc.quantity);
   }
 
   // Despachos row (not filtered by provider — always global)
@@ -107,7 +139,6 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
   }
 
   const serviceNames = [...serviceMap.keys()].sort();
-  const totalIncomings = totalIncomingsKpi._sum.quantity || 0;
   const totalSunat = guideDetails.reduce((s, d) => s + d.deliveredQuantity, 0);
 
   const selectedProvider = providerFilter
@@ -119,51 +150,77 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       <h1 className={styles.pageTitle} style={{ marginBottom: "1rem" }}>Dashboard de Producción</h1>
 
       {/* KPI Cards */}
-      <div className={styles.statsGridCompact} style={{ marginBottom: "1.5rem" }}>
-        <div className={styles.statCardCompact}>
-          <Package size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
-          <div>
-            <p className={styles.statLabelCompact}>Pedidos Activos</p>
-            <h3 className={styles.statValueCompact}>{totalActiveOrders}</h3>
-          </div>
-        </div>
-        <div className={styles.statCardCompact}>
-          <TrendingUp size={18} style={{ color: "#8b5cf6", flexShrink: 0 }} />
-          <div>
-            <p className={styles.statLabelCompact}>Prendas en Proceso</p>
-            <h3 className={styles.statValueCompact}>{totalPendingGarments._sum.totalQuantity || 0}</h3>
-          </div>
-        </div>
-        <div className={styles.statCardCompact}>
+      <div style={{ display: "flex", gap: "1rem", alignItems: "stretch", marginBottom: "1.5rem", flexWrap: "wrap" }}>
+        {/* Entregadas cliente */}
+        <div className={styles.statCardCompact} style={{ flexShrink: 0 }}>
           <FileText size={18} style={{ color: "green", flexShrink: 0 }} />
           <div>
             <p className={styles.statLabelCompact}>Entregadas Cliente ({DAYS}d)</p>
             <h3 className={styles.statValueCompact} style={{ color: "green" }}>{totalSunat}</h3>
           </div>
         </div>
-        <div className={styles.statCardCompact}>
-          <Truck size={18} style={{ color: "orange", flexShrink: 0 }} />
-          <div>
-            <p className={styles.statLabelCompact}>
-              Ingresadas de Taller ({DAYS}d)
-              {selectedProvider && <span style={{ fontSize: "0.7rem", display: "block", color: "var(--text-muted)" }}>{selectedProvider.businessName}</span>}
-            </p>
-            <h3 className={styles.statValueCompact} style={{ color: "orange" }}>{totalIncomings}</h3>
-          </div>
+
+        {/* Pending by service chips */}
+        <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.5rem", flex: 1 }}>
+          <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", margin: 0 }}>Pendiente en Taller por Servicio</p>
+          {pendingServiceList.length === 0 ? (
+            <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Sin pendientes</span>
+          ) : (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
+              {pendingServiceList.map(([name, { id, pending }]) => (
+                <Link key={id} href={`/admin/services/reporte/${id}`} style={{ textDecoration: "none" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "rgba(245,158,11,0.1)", border: "1px solid orange", borderRadius: "100px", padding: "0.3rem 0.85rem", fontSize: "0.82rem", cursor: "pointer" }}>
+                    <span style={{ fontWeight: 600, color: "var(--text-color)" }}>{name}</span>
+                    <span style={{ fontWeight: 800, color: "orange" }}>{pending}</span>
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
-        <div className={styles.statCardCompact}>
-          <Users size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
-          <div>
-            <p className={styles.statLabelCompact}>Clientes</p>
-            <h3 className={styles.statValueCompact}>{totalClients}</h3>
+      </div>
+
+      {/* ACTIVE ORDERS: PENDIENTE + EN PROCESO */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
+
+        {/* PENDIENTE — solo total */}
+        <Link href="/admin/orders?status=PENDIENTE" style={{ textDecoration: "none" }}>
+          <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", padding: "1.5rem 1.75rem", display: "flex", alignItems: "center", gap: "1rem", height: "100%" }}>
+            <Clock size={28} style={{ color: "orange", flexShrink: 0 }} />
+            <div>
+              <p style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", margin: "0 0 0.25rem" }}>Pedidos Pendientes</p>
+              <h3 style={{ fontSize: "2.5rem", fontWeight: 800, color: "orange", margin: 0, lineHeight: 1 }}>{pendienteOrders.length}</h3>
+            </div>
           </div>
-        </div>
-        <div className={styles.statCardCompact}>
-          <Truck size={18} style={{ color: "var(--primary)", flexShrink: 0 }} />
-          <div>
-            <p className={styles.statLabelCompact}>Proveedores</p>
-            <h3 className={styles.statValueCompact}>{totalProviders}</h3>
+        </Link>
+
+        {/* EN PROCESO */}
+        <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", overflow: "hidden" }}>
+          <div style={{ padding: "0.85rem 1.25rem", borderBottom: "1px solid var(--card-border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <Wrench size={16} style={{ color: "#7c3aed" }} />
+            <h2 style={{ fontSize: "0.9rem", fontWeight: 700, margin: 0, color: "#7c3aed" }}>
+              En Proceso <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "0.8rem" }}>({enProcesoOrders.length})</span>
+            </h2>
+            <Link href="/admin/orders?status=EN PROCESO" style={{ marginLeft: "auto", fontSize: "0.75rem", color: "var(--primary)", textDecoration: "none" }}>Ver todos →</Link>
           </div>
+          {enProcesoOrders.length === 0 ? (
+            <div style={{ padding: "1.5rem", textAlign: "center", color: "var(--text-muted)", fontSize: "0.85rem" }}>Sin pedidos en proceso</div>
+          ) : (
+            <div style={{ maxHeight: "280px", overflowY: "auto" }}>
+              {enProcesoOrders.map((o: any) => (
+                <Link key={o.id} href={`/admin/orders/${o.id}`} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0.65rem 1.25rem", borderBottom: "1px solid var(--card-border)", textDecoration: "none", color: "inherit" }}>
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: "0.85rem" }}>{o.orderNumber}</div>
+                    <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{o.client.name} — {o.garment}</div>
+                  </div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#7c3aed" }}>{o.sentToWorkshop} env.</div>
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{o.totalQuantity} total</div>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
@@ -227,18 +284,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
               </thead>
               <tbody>
                 {serviceNames.map((svcName, idx) => {
-                  const dayMap = serviceMap.get(svcName)!;
-                  const rowTotal = [...dayMap.values()].reduce((a, b) => a + b, 0);
+                  const entry = serviceMap.get(svcName)!;
+                  const rowTotal = [...entry.days.values()].reduce((a, b) => a + b, 0);
                   return (
                     <tr key={svcName} style={{ background: idx % 2 === 0 ? "var(--card-bg)" : "var(--bg-color)" }}>
                       <td style={{ padding: "0.55rem 1rem", fontWeight: 600, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "inherit", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                         <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "var(--primary)", display: "inline-block", flexShrink: 0 }} />
-                        {svcName}
+                        <Link href={`/admin/services/reporte/${entry.id}?pending=0`} style={{ color: "inherit", textDecoration: "none" }}>
+                          {svcName}
+                        </Link>
                       </td>
                       {days.map(d => {
-                        const qty = dayMap.get(getDayKey(d)) || 0;
+                        const dayKey = getDayKey(d);
+                        const qty = entry.days.get(dayKey) || 0;
                         return (
-                          <td key={getDayKey(d)} style={{
+                          <td key={dayKey} style={{
                             padding: "0.55rem 0.4rem",
                             textAlign: "center",
                             borderBottom: "1px solid var(--card-border)",
@@ -246,12 +306,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                             color: qty > 0 ? "var(--text-color)" : "var(--text-muted)",
                             background: qty > 0 ? "rgba(99,102,241,0.07)" : "transparent",
                           }}>
-                            {qty > 0 ? qty : "—"}
+                            {qty > 0 ? (
+                              <Link href={`/admin/services/reporte/${entry.id}?date=${dayKey}`} style={{ color: "inherit", textDecoration: "none", display: "block" }}>
+                                {qty}
+                              </Link>
+                            ) : "—"}
                           </td>
                         );
                       })}
                       <td style={{ padding: "0.55rem 0.65rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--card-border)", color: "var(--primary)" }}>
-                        {rowTotal}
+                        <Link href={`/admin/services/reporte/${entry.id}?pending=0`} style={{ color: "inherit", textDecoration: "none" }}>
+                          {rowTotal}
+                        </Link>
                       </td>
                     </tr>
                   );
@@ -262,12 +328,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                   <tr style={{ background: "#e8f5e915", borderTop: "2px solid var(--card-border)" }}>
                     <td style={{ padding: "0.55rem 1rem", fontWeight: 700, borderBottom: "1px solid var(--card-border)", position: "sticky", left: 0, background: "#e8f5e915", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                       <span style={{ width: "7px", height: "7px", borderRadius: "50%", background: "green", display: "inline-block", flexShrink: 0 }} />
-                      Despachos al Cliente
+                      <Link href="/admin/guides" style={{ color: "inherit", textDecoration: "none" }}>
+                        Despachos al Cliente
+                      </Link>
                     </td>
                     {days.map(d => {
-                      const qty = sunatRow.get(getDayKey(d)) || 0;
+                      const dayKey = getDayKey(d);
+                      const qty = sunatRow.get(dayKey) || 0;
                       return (
-                        <td key={getDayKey(d)} style={{
+                        <td key={dayKey} style={{
                           padding: "0.55rem 0.4rem",
                           textAlign: "center",
                           borderBottom: "1px solid var(--card-border)",
@@ -275,12 +344,18 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                           color: qty > 0 ? "green" : "var(--text-muted)",
                           background: qty > 0 ? "rgba(0,128,0,0.05)" : "transparent",
                         }}>
-                          {qty > 0 ? qty : "—"}
+                          {qty > 0 ? (
+                            <Link href={`/admin/guides?from=${dayKey}&to=${dayKey}`} style={{ color: "green", textDecoration: "none", display: "block" }}>
+                              {qty}
+                            </Link>
+                          ) : "—"}
                         </td>
                       );
                     })}
                     <td style={{ padding: "0.55rem 0.65rem", textAlign: "center", fontWeight: 700, borderBottom: "1px solid var(--card-border)", color: "green" }}>
-                      {totalSunat}
+                      <Link href="/admin/guides" style={{ color: "green", textDecoration: "none" }}>
+                        {totalSunat}
+                      </Link>
                     </td>
                   </tr>
                 )}

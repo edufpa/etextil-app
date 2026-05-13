@@ -6,10 +6,12 @@ import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "@/lib/company";
 import { logActivity } from "@/lib/logger";
 
-function deriveOrderStatus(currentStatus: string, totalDelivered: number, totalQuantity: number) {
-  if (currentStatus === "CERRADO" || currentStatus === "CANCELADO") return currentStatus;
+function deriveOrderStatus(currentStatus: string, totalDelivered: number, totalQuantity: number, sentToWorkshop = 0) {
+  if (currentStatus === "CERRADO") return "ENTREGADO";
+  if (currentStatus === "CANCELADO" || currentStatus === "ENTREGADO") return currentStatus;
   if (totalDelivered >= totalQuantity) return "ENTREGADO";
   if (totalDelivered > 0) return "PARCIALMENTE ENTREGADO";
+  if (sentToWorkshop > 0) return "EN PROCESO";
   return "PENDIENTE";
 }
 
@@ -170,8 +172,10 @@ export async function getOrderSummary(orderId: number) {
   if (!order) return null;
 
   const totalDelivered = order.guides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
+  const sentToWorkshop = order.services.reduce((acc, svc) =>
+    acc + svc.deliveries.reduce((a, d) => a + d.quantity, 0), 0);
   const pending = order.totalQuantity - totalDelivered;
-  const status = deriveOrderStatus(order.status, totalDelivered, order.totalQuantity);
+  const status = deriveOrderStatus(order.status, totalDelivered, order.totalQuantity, sentToWorkshop);
 
   return { ...order, status, totalDelivered, pending };
 }
@@ -180,14 +184,14 @@ export async function closeOrderManually(orderId: number) {
   try {
     await prisma.order.update({
       where: { id: orderId },
-      data: { status: "CERRADO" },
+      data: { status: "ENTREGADO" },
     });
     revalidatePath(`/admin/orders/${orderId}`);
     revalidatePath("/admin/orders");
     return { success: true };
   } catch (error) {
     console.error(error);
-    return { error: "Error al cerrar el pedido" };
+    return { error: "Error al actualizar el pedido" };
   }
 }
 

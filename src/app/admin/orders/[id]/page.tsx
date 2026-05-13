@@ -95,15 +95,18 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
         </div>
 
         <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-          <span className={styles.badge} style={{ fontSize: "1rem", padding: "0.5rem 1rem", background: order.status === 'CERRADO' ? '#333' : 'var(--primary)', color: 'white' }}>
-            {order.status}
+          <span className={styles.badge} style={{
+            fontSize: "1rem", padding: "0.5rem 1rem", color: 'white',
+            background: (order.status === 'ENTREGADO' || order.status === 'CERRADO') ? 'var(--success)' : order.status === 'CANCELADO' ? '#dc2626' : 'var(--primary)',
+          }}>
+            {order.status === 'CERRADO' ? 'ENTREGADO' : order.status}
           </span>
-          {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
+          {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
             <Link href={`/admin/orders/${order.id}/edit`} className={styles.editBtn} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", textDecoration: "none" }}>
               <Pencil size={16} /> Editar
             </Link>
           )}
-          {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && order.totalDelivered >= order.totalQuantity && (
+          {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
             <CloseOrderButton id={order.id} />
           )}
           <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
@@ -166,7 +169,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                         <span style={{ color: "var(--primary)" }}>Env: <strong>{sentToTaller}</strong></span>
                         <span style={{ color: "green" }}>Rec: <strong>{receivedBack}</strong></span>
                         <span style={{ color: "var(--text-muted)" }}>Req: {svc.requiredQuantity}</span>
-                        {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
+                        {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
                           <AdjustQtyButton
                             orderServiceId={svc.id}
                             orderId={order.id}
@@ -213,7 +216,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           )}
 
           {/* Form for registering new OP */}
-          {order.status !== 'CERRADO' && order.status !== 'CANCELADO' && orderServicesForForm.some((s: any) => s.requiredQuantity - s.alreadyDelivered > 0) && (
+          {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && orderServicesForForm.some((s: any) => s.requiredQuantity - s.alreadyDelivered > 0) && (
             <ProviderDeliveryForm
               orderId={order.id}
               orderServices={orderServicesForForm}

@@ -15,11 +15,11 @@ export default async function GlobalAdminPage() {
     (prisma as any).company.findMany({ orderBy: { createdAt: "desc" } }) as Promise<
       { id: number; name: string; status: boolean }[]
     >,
-    (prisma as any).appUser.findMany({
+    prisma.appUser.findMany({
       where: { role: "COMPANY_ADMIN" },
-      include: { company: true },
       orderBy: { createdAt: "desc" },
-    }) as Promise<{ id: number; username: string; status: boolean; company: { name: string } | null }[]>,
+      select: { id: true, username: true, email: true, status: true, company: { select: { name: true } } },
+    }),
   ]);
 
   return (

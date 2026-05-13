@@ -6,7 +6,7 @@
 }
 
 .title {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   color: var(--foreground);
 }
@@ -43,15 +43,16 @@
 }
 
 .table th, .table td {
-  padding: 1rem 1.5rem;
+  padding: 0.7rem 1.1rem;
   border-bottom: 1px solid var(--sidebar-border);
+  font-size: 0.875rem;
 }
 
 .table th {
   background: var(--primary-light);
   color: var(--primary);
   font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 0.78rem;
 }
 
 .table tr:last-child td {

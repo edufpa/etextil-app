@@ -95,16 +95,11 @@ export default async function GuidesPage({ searchParams }: { searchParams: Searc
                       </div>
                     </td>
                     <td>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "0.3rem" }}>
                         {[...byOrder.values()].map(entry => (
-                          <div key={entry.orderNumber} style={{ fontSize: "0.8rem" }}>
-                            <strong style={{ color: "var(--primary)" }}>{entry.orderNumber}:</strong>{" "}
-                            {[...entry.sizes.entries()].map(([sz, qty]) => (
-                              <span key={sz} style={{ background: "var(--bg-color)", padding: "0.1rem 0.4rem", borderRadius: "4px", margin: "0 0.15rem" }}>
-                                {sz}: {qty}
-                              </span>
-                            ))}
-                          </div>
+                          <span key={entry.orderNumber} style={{ background: "var(--bg-color)", border: "1px solid var(--card-border)", padding: "0.15rem 0.5rem", borderRadius: "4px", fontSize: "0.8rem", fontWeight: 600, color: "var(--primary)" }}>
+                            {entry.orderNumber}
+                          </span>
                         ))}
                       </div>
                     </td>

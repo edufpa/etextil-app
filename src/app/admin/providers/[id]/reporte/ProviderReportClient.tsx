@@ -36,7 +36,6 @@ type Props = {
 
 export default function ProviderReportClient({ providerId, orderGroups, byService }: Props) {
   const router = useRouter();
-  const [showAll, setShowAll] = useState(false);
   const [activeRow, setActiveRow] = useState<number | null>(null); // delivery id
   const [inQty, setInQty] = useState(1);
   const [inDate, setInDate] = useState(new Date().toISOString().split("T")[0]);
@@ -67,11 +66,6 @@ export default function ProviderReportClient({ providerId, orderGroups, byServic
     if (res.error) { setError(res.error); }
     else { setActiveRow(null); router.refresh(); }
   };
-
-  // Filter groups: if showAll=false, only show groups with pending rows
-  const filteredGroups = orderGroups.filter((g) =>
-    showAll || g.rows.some((r) => r.pending > 0)
-  );
 
   const totalPendingAll = orderGroups.reduce((s, g) => s + g.rows.reduce((a, r) => a + r.pending, 0), 0);
 
@@ -106,35 +100,15 @@ export default function ProviderReportClient({ providerId, orderGroups, byServic
         </table>
       </div>
 
-      {/* Filter toggle */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1rem" }}>
-        <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>
-          {showAll ? `Mostrando todos los pedidos` : `Mostrando solo pedidos con pendientes`}
-        </span>
-        <button
-          onClick={() => setShowAll(!showAll)}
-          style={{ padding: "0.35rem 0.85rem", background: showAll ? "var(--primary)" : "transparent", color: showAll ? "white" : "var(--primary)", border: "1px solid var(--primary)", borderRadius: "6px", cursor: "pointer", fontSize: "0.78rem", fontWeight: 600 }}
-        >
-          {showAll ? "Ver solo activos" : "Ver todos"}
-        </button>
-        {totalPendingAll > 0 && (
-          <span style={{ background: "#fff3e0", color: "orange", border: "1px solid orange", borderRadius: "999px", padding: "2px 10px", fontSize: "0.75rem", fontWeight: 700 }}>
-            {totalPendingAll} en taller
-          </span>
-        )}
-      </div>
-
       {/* Order groups */}
-      {filteredGroups.length === 0 ? (
+      {orderGroups.length === 0 ? (
         <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "3rem", textAlign: "center", color: "var(--text-muted)" }}>
-          No hay OPs con trabajo pendiente.{" "}
-          <button onClick={() => setShowAll(true)} style={{ background: "none", border: "none", color: "var(--primary)", cursor: "pointer", fontWeight: 600 }}>Ver historial completo</button>
+          No hay OPs con los filtros seleccionados.
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-          {filteredGroups.map(({ orderId, order, rows }) => {
+          {orderGroups.map(({ orderId, order, rows }) => {
             const orderPending = rows.reduce((s, r) => s + r.pending, 0);
-            const displayedRows = showAll ? rows : rows.filter((r) => r.pending > 0);
             return (
               <div key={orderId} style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
                 <div style={{ padding: "0.9rem 1.25rem", background: "var(--bg-color)", borderBottom: "1px solid var(--card-border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "0.5rem" }}>
@@ -171,7 +145,7 @@ export default function ProviderReportClient({ providerId, orderGroups, byServic
                     </tr>
                   </thead>
                   <tbody>
-                    {displayedRows.map((row) => (
+                    {rows.map((row) => (
                       <>
                         <tr key={row.id} style={{ borderBottom: activeRow === row.id ? "none" : "1px solid var(--card-border)", background: row.pending > 0 ? "#fff8f0" : undefined }}>
                           <td style={{ padding: "0.6rem 1rem", fontWeight: 700 }}>{row.serviceName}</td>

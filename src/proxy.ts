@@ -3,7 +3,7 @@ import { decrypt } from "@/lib/auth";
 
 const protectedRoutes = ["/admin"];
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const isProtectedRoute = protectedRoutes.some((route) =>
     path.startsWith(route)
@@ -21,7 +21,7 @@ export async function middleware(req: NextRequest) {
     }
   }
   
-  if (path === "/" || path === "/login") {
+  if (path === "/" || path === "/login" || path === "/forgot-password" || path.startsWith("/reset-password")) {
     const session = req.cookies.get("session")?.value;
     const parsed = await decrypt(session);
     if (parsed?.userId) {

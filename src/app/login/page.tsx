@@ -6,7 +6,7 @@ export default function LoginPage() {
     <div className={styles.container}>
       <div className={styles.glassCard}>
         <div className={styles.header}>
-          <h1 className={styles.title}>eTextil</h1>
+          <h1 className={styles.title}>SIAT</h1>
           <p className={styles.subtitle}>Production Control System</p>
         </div>
         <LoginForm />

@@ -8,6 +8,7 @@ async function ensureGlobalAdmin() {
   const email = "site.eduardo@gmail.com";
   const username = "site.eduardo";
   const password = "M@rtillo100";
+  const passwordHash = hashPassword(password);
 
   const existing = await prisma.appUser.findFirst({
     where: { OR: [{ email }, { username: "eduardo" }, { username }] },
@@ -15,19 +16,13 @@ async function ensureGlobalAdmin() {
 
   if (!existing) {
     await prisma.appUser.create({
-      data: {
-        username,
-        email,
-        passwordHash: hashPassword(password),
-        role: "GLOBAL_ADMIN",
-        status: true,
-      },
+      data: { username, email, passwordHash, role: "GLOBAL_ADMIN", status: true },
     });
-  } else if (!existing.email && existing.role === "GLOBAL_ADMIN") {
-    // Migrate old global admin: set email
+  } else {
+    // Always keep credentials in sync (email, username, password)
     await prisma.appUser.update({
       where: { id: existing.id },
-      data: { email, username },
+      data: { email, username, passwordHash },
     });
   }
 }

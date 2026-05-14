@@ -37,6 +37,19 @@ export async function createGarment(formData: FormData) {
   }
 }
 
+export async function quickCreateGarment(name: string): Promise<{ id: number; name: string } | { error: string }> {
+  try {
+    const companyId = await getSessionCompanyId();
+    const garment = await prisma.garment.create({
+      data: { name: name.trim(), company_id: companyId },
+    });
+    revalidatePath("/admin/garments");
+    return { id: garment.id, name: garment.name };
+  } catch (e: any) {
+    return { error: e.message || "Error al crear prenda" };
+  }
+}
+
 export async function updateGarment(id: number, formData: FormData) {
   try {
     const existing = await prisma.garment.findUnique({ where: { id } });

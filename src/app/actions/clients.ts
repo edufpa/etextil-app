@@ -45,6 +45,19 @@ export async function updateClient(id: number, formData: FormData) {
   }
 }
 
+export async function quickCreateClient(name: string): Promise<{ id: number; name: string } | { error: string }> {
+  try {
+    const companyId = await getSessionCompanyId();
+    const client = await prisma.client.create({
+      data: { name: name.trim(), ...(companyId ? { company_id: companyId } : {}) },
+    });
+    revalidatePath("/admin/clients");
+    return { id: client.id, name: client.name };
+  } catch (e: any) {
+    return { error: e.message || "Error al crear cliente" };
+  }
+}
+
 export async function disableClient(id: number) {
   try {
     await prisma.client.update({

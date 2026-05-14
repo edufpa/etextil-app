@@ -14,6 +14,17 @@ export async function createSize(data: { name: string }) {
   }
 }
 
+export async function quickCreateSize(name: string): Promise<{ id: number; name: string } | { error: string }> {
+  try {
+    const size = await prisma.size.create({ data: { name: name.trim() } });
+    revalidatePath("/admin/sizes");
+    return { id: size.id, name: size.name };
+  } catch (e: any) {
+    if (e.code === "P2002") return { error: "La talla ya existe" };
+    return { error: "Error al crear talla" };
+  }
+}
+
 export async function updateSize(id: number, data: { name: string }) {
   try {
     await prisma.size.update({ where: { id }, data });

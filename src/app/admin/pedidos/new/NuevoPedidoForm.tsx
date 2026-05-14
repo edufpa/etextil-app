@@ -1,14 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Plus, Trash2, PlusCircle, ShoppingBag } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, PlusCircle, ShoppingBag, X } from "lucide-react";
 import { createPedido } from "@/app/actions/pedidos";
+import { quickCreateClient } from "@/app/actions/clients";
+import { quickCreateGarment } from "@/app/actions/garments";
+import { quickCreateColor } from "@/app/actions/colors";
+import { quickCreateSize } from "@/app/actions/sizes";
 
 type Option = { id: number; name: string };
 type SizeRow = { size: string; quantity: number; precio: string };
 type ItemRow = { garment: string; color: string; sku: string; moneda: string; notes: string; sizes: SizeRow[] };
+
+type ModalTarget =
+  | { type: "client" }
+  | { type: "garment"; itemIdx: number }
+  | { type: "color"; itemIdx: number }
+  | { type: "size"; itemIdx: number; sizeIdx: number };
 
 const emptySize = (defaultPrecio = ""): SizeRow => ({ size: "", quantity: 0, precio: defaultPrecio });
 const emptyItem = (): ItemRow => ({ garment: "", color: "", sku: "", moneda: "PEN", notes: "", sizes: [emptySize()] });
@@ -18,29 +28,122 @@ const inp: React.CSSProperties = {
   border: "1px solid var(--card-border)", background: "var(--bg-color)",
   fontSize: "0.875rem", width: "100%", boxSizing: "border-box",
 };
-
 const hdr: React.CSSProperties = {
   fontSize: "0.67rem", fontWeight: 700, textTransform: "uppercase",
   letterSpacing: "0.05em", color: "var(--primary)",
 };
+const plusBtn: React.CSSProperties = {
+  display: "inline-flex", alignItems: "center", justifyContent: "center",
+  width: 22, height: 22, borderRadius: "50%",
+  border: "1px solid var(--primary)", background: "transparent",
+  color: "var(--primary)", cursor: "pointer", padding: 0, flexShrink: 0,
+};
 
+// ── Quick-create modal ──────────────────────────────────────────────────────
+function QuickModal({
+  title, onSave, onClose,
+}: {
+  title: string;
+  onSave: (name: string) => Promise<string | null>; // returns error string or null
+  onClose: () => void;
+}) {
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { inputRef.current?.focus(); }, []);
+
+  const handleSave = async () => {
+    if (!name.trim()) { setError("Ingresa un nombre"); return; }
+    setSaving(true);
+    const err = await onSave(name.trim());
+    setSaving(false);
+    if (err) setError(err);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
+      display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
+    }} onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        background: "var(--card-bg)", borderRadius: "10px", padding: "1.5rem",
+        width: 340, boxShadow: "0 8px 32px rgba(0,0,0,0.18)",
+        border: "1px solid var(--card-border)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+          <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{title}</span>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", padding: 0 }}>
+            <X size={18} />
+          </button>
+        </div>
+        <input
+          ref={inputRef}
+          style={{ ...inp, marginBottom: "0.5rem" }}
+          value={name}
+          onChange={(e) => { setName(e.target.value); setError(""); }}
+          placeholder="Nombre..."
+          onKeyDown={(e) => { if (e.key === "Enter") handleSave(); if (e.key === "Escape") onClose(); }}
+        />
+        {error && (
+          <div style={{ fontSize: "0.8rem", color: "#dc2626", marginBottom: "0.5rem" }}>{error}</div>
+        )}
+        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "0.75rem" }}>
+          <button onClick={onClose} style={{
+            padding: "0.42rem 1rem", borderRadius: "6px", fontSize: "0.84rem",
+            border: "1px solid var(--card-border)", background: "transparent",
+            color: "var(--text-muted)", cursor: "pointer",
+          }}>Cancelar</button>
+          <button onClick={handleSave} disabled={saving} style={{
+            padding: "0.42rem 1.1rem", borderRadius: "6px", fontSize: "0.84rem", fontWeight: 700,
+            background: "var(--primary)", color: "white", border: "none",
+            cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1,
+          }}>{saving ? "Guardando..." : "Guardar"}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Label with + button ─────────────────────────────────────────────────────
+function LabelWithAdd({ label, onAdd }: { label: string; onAdd: () => void }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.3rem" }}>
+      <span style={{ ...hdr, color: "var(--text-muted)" }}>{label}</span>
+      <button type="button" onClick={onAdd} style={plusBtn} title={`Nuevo ${label}`}>
+        <Plus size={12} />
+      </button>
+    </div>
+  );
+}
+
+// ── Main form ───────────────────────────────────────────────────────────────
 export default function NuevoPedidoForm({
-  clients, sizes, garments, colors,
+  clients: initClients, sizes: initSizes, garments: initGarments, colors: initColors,
 }: { clients: Option[]; sizes: Option[]; garments: Option[]; colors: Option[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  // Local option lists (mutable without page reload)
+  const [clientOpts, setClientOpts] = useState<Option[]>(initClients);
+  const [garmentOpts, setGarmentOpts] = useState<Option[]>(initGarments);
+  const [colorOpts, setColorOpts] = useState<Option[]>(initColors);
+  const [sizeOpts, setSizeOpts] = useState<Option[]>(initSizes);
+
   const [clientId, setClientId] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
   const [items, setItems] = useState<ItemRow[]>([emptyItem()]);
 
+  // Modal state
+  const [modal, setModal] = useState<ModalTarget | null>(null);
+
   const updateItem = (idx: number, field: keyof Omit<ItemRow, "sizes">, value: string) =>
     setItems((p) => p.map((it, i) => i !== idx ? it : { ...it, [field]: value }));
-
   const addItem = () => setItems((p) => [...p, emptyItem()]);
   const removeItem = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
-
   const updateSize = (ii: number, si: number, field: keyof SizeRow, value: string | number) =>
     setItems((p) => p.map((it, i) => i !== ii ? it : {
       ...it,
@@ -48,14 +151,12 @@ export default function NuevoPedidoForm({
         ...s, [field]: field === "quantity" ? Number(value) : value,
       }),
     }));
-
   const addSize = (ii: number) =>
     setItems((p) => p.map((it, i) => {
       if (i !== ii) return it;
       const lastPrecio = it.sizes.length > 0 ? it.sizes[it.sizes.length - 1].precio : "";
       return { ...it, sizes: [...it.sizes, emptySize(lastPrecio)] };
     }));
-
   const removeSize = (ii: number, si: number) =>
     setItems((p) => p.map((it, i) => i !== ii ? it : { ...it, sizes: it.sizes.filter((_, j) => j !== si) }));
 
@@ -65,14 +166,60 @@ export default function NuevoPedidoForm({
   const itemSummaries = items.map((it) => {
     let qty = 0, subtotal = 0;
     it.sizes.forEach((s) => {
-      const q = s.quantity || 0;
-      const p = parseFloat(s.precio) || 0;
+      const q = s.quantity || 0; const p = parseFloat(s.precio) || 0;
       qty += q; subtotal += q * p;
     });
     totalUnits += qty;
     if (subtotal > 0) byMoneda[it.moneda] = (byMoneda[it.moneda] || 0) + subtotal;
     return { qty, subtotal, sym: it.moneda === "USD" ? "$" : "S/" };
   });
+
+  // Modal save handlers
+  const handleModalSave = async (name: string): Promise<string | null> => {
+    if (!modal) return null;
+    if (modal.type === "client") {
+      const res = await quickCreateClient(name);
+      if ("error" in res) return res.error;
+      setClientOpts((p) => [...p, res].sort((a, b) => a.name.localeCompare(b.name)));
+      setClientId(String(res.id));
+      setModal(null);
+      return null;
+    }
+    if (modal.type === "garment") {
+      const res = await quickCreateGarment(name);
+      if ("error" in res) return res.error;
+      setGarmentOpts((p) => [...p, res].sort((a, b) => a.name.localeCompare(b.name)));
+      updateItem(modal.itemIdx, "garment", res.name);
+      setModal(null);
+      return null;
+    }
+    if (modal.type === "color") {
+      const res = await quickCreateColor(name);
+      if ("error" in res) return res.error;
+      setColorOpts((p) => [...p, res].sort((a, b) => a.name.localeCompare(b.name)));
+      updateItem(modal.itemIdx, "color", res.name);
+      setModal(null);
+      return null;
+    }
+    if (modal.type === "size") {
+      const res = await quickCreateSize(name);
+      if ("error" in res) return res.error;
+      setSizeOpts((p) => [...p, res].sort((a, b) => a.name.localeCompare(b.name)));
+      updateSize(modal.itemIdx, modal.sizeIdx, "size", res.name);
+      setModal(null);
+      return null;
+    }
+    return null;
+  };
+
+  const modalTitle = () => {
+    if (!modal) return "";
+    if (modal.type === "client") return "Nuevo Cliente";
+    if (modal.type === "garment") return "Nueva Prenda";
+    if (modal.type === "color") return "Nuevo Color";
+    if (modal.type === "size") return "Nueva Talla";
+    return "";
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -90,12 +237,10 @@ export default function NuevoPedidoForm({
         notes: notes || undefined,
         items: items.map((it) => ({
           garment: it.garment, color: it.color,
-          sku: it.sku || undefined,
-          moneda: it.moneda,
+          sku: it.sku || undefined, moneda: it.moneda,
           notes: it.notes || undefined,
           sizes: it.sizes.map((s) => ({
-            size: s.size,
-            quantity: s.quantity,
+            size: s.size, quantity: s.quantity,
             precioUnitario: parseFloat(s.precio) || undefined,
           })),
         })),
@@ -109,6 +254,15 @@ export default function NuevoPedidoForm({
 
   return (
     <div style={{ maxWidth: 1000, margin: "0 auto" }}>
+      {/* Modal */}
+      {modal && (
+        <QuickModal
+          title={modalTitle()}
+          onSave={handleModalSave}
+          onClose={() => setModal(null)}
+        />
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "1.5rem" }}>
         <Link href="/admin/pedidos" style={{ color: "var(--text-muted)", display: "flex" }}><ArrowLeft size={20} /></Link>
         <ShoppingBag size={20} color="var(--primary)" />
@@ -116,16 +270,15 @@ export default function NuevoPedidoForm({
       </div>
 
       <form onSubmit={handleSubmit}>
-
         {/* Datos del pedido */}
         <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "1.1rem 1.25rem", marginBottom: "1rem" }}>
           <div style={{ ...hdr, marginBottom: "0.75rem" }}>Datos del Pedido</div>
           <div style={{ display: "grid", gridTemplateColumns: "2fr 160px 2fr", gap: "1rem" }}>
             <div>
-              <div style={{ ...hdr, color: "var(--text-muted)", marginBottom: "0.3rem" }}>Cliente *</div>
+              <LabelWithAdd label="Cliente *" onAdd={() => setModal({ type: "client" })} />
               <select style={inp} value={clientId} onChange={(e) => setClientId(e.target.value)} required>
                 <option value="">Seleccionar cliente...</option>
-                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                {clientOpts.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -156,14 +309,20 @@ export default function NuevoPedidoForm({
             const { qty, subtotal, sym } = itemSummaries[ii];
             return (
               <div key={ii} style={{ borderBottom: ii < items.length - 1 ? "1px solid var(--card-border)" : "none" }}>
-
                 {/* Item header: prenda | sku | color | moneda | [X] */}
                 <div style={{ display: "grid", gridTemplateColumns: "1.8fr 1fr 0.8fr 90px 28px", gap: "0.75rem", padding: "0.9rem 1.25rem 0.5rem", alignItems: "end" }}>
                   <div>
-                    {ii === 0 && <div style={{ ...hdr, color: "var(--text-muted)", marginBottom: "0.3rem" }}>Prenda</div>}
+                    {ii === 0 && <LabelWithAdd label="Prenda" onAdd={() => setModal({ type: "garment", itemIdx: ii })} />}
+                    {ii > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.3rem" }}>
+                        <button type="button" onClick={() => setModal({ type: "garment", itemIdx: ii })} style={plusBtn} title="Nueva Prenda">
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    )}
                     <select style={inp} value={item.garment} onChange={(e) => updateItem(ii, "garment", e.target.value)} required>
                       <option value="">Seleccionar...</option>
-                      {garments.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
+                      {garmentOpts.map((g) => <option key={g.id} value={g.name}>{g.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -171,10 +330,17 @@ export default function NuevoPedidoForm({
                     <input style={inp} value={item.sku} onChange={(e) => updateItem(ii, "sku", e.target.value)} placeholder="SKU-001" />
                   </div>
                   <div>
-                    {ii === 0 && <div style={{ ...hdr, color: "var(--text-muted)", marginBottom: "0.3rem" }}>Color</div>}
+                    {ii === 0 && <LabelWithAdd label="Color" onAdd={() => setModal({ type: "color", itemIdx: ii })} />}
+                    {ii > 0 && (
+                      <div style={{ display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.3rem" }}>
+                        <button type="button" onClick={() => setModal({ type: "color", itemIdx: ii })} style={plusBtn} title="Nuevo Color">
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    )}
                     <select style={inp} value={item.color} onChange={(e) => updateItem(ii, "color", e.target.value)} required>
                       <option value="">Color</option>
-                      {colors.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                      {colorOpts.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
                     </select>
                   </div>
                   <div>
@@ -196,9 +362,13 @@ export default function NuevoPedidoForm({
 
                 {/* Tallas sub-table */}
                 <div style={{ padding: "0 1.25rem 0.5rem 1.25rem" }}>
-                  {/* Talla sub-header */}
                   <div style={{ display: "grid", gridTemplateColumns: "110px 80px 100px 24px", gap: "0.5rem", marginBottom: "0.3rem", paddingLeft: "0.1rem" }}>
-                    <span style={{ ...hdr, color: "var(--text-muted)" }}>Talla</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.3rem" }}>
+                      <span style={{ ...hdr, color: "var(--text-muted)" }}>Talla</span>
+                      <button type="button" onClick={() => setModal({ type: "size", itemIdx: ii, sizeIdx: 0 })} style={{ ...plusBtn, width: 18, height: 18 }} title="Nueva Talla">
+                        <Plus size={10} />
+                      </button>
+                    </div>
                     <span style={{ ...hdr, color: "var(--text-muted)" }}>Cantidad</span>
                     <span style={{ ...hdr, color: "var(--text-muted)" }}>Precio unit. (s/IGV)</span>
                     <span />
@@ -210,15 +380,14 @@ export default function NuevoPedidoForm({
                         <select value={sr.size} onChange={(e) => updateSize(ii, si, "size", e.target.value)}
                           style={{ ...inp, fontSize: "0.83rem" }} required>
                           <option value="">Talla...</option>
-                          {sizes.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                          {sizeOpts.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
                         </select>
                         <input type="number" min={1} value={sr.quantity || ""}
                           onChange={(e) => updateSize(ii, si, "quantity", e.target.value)}
                           placeholder="0" style={{ ...inp, fontSize: "0.83rem" }} required />
                         <input type="number" min={0} step="0.01" value={sr.precio}
                           onChange={(e) => updateSize(ii, si, "precio", e.target.value)}
-                          placeholder="0.00"
-                          style={{ ...inp, fontSize: "0.83rem" }} />
+                          placeholder="0.00" style={{ ...inp, fontSize: "0.83rem" }} />
                         {item.sizes.length > 1 && (
                           <button type="button" onClick={() => removeSize(ii, si)}
                             style={{ background: "none", border: "none", cursor: "pointer", color: "#dc2626", padding: 0 }}>

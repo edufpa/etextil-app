@@ -24,15 +24,11 @@ export default async function NewOrderPage() {
     }),
   ]);
 
-  const defaultNames = ["Corte", "Confección", "Estampado"];
-  const defaultServices = allServices.filter(s => defaultNames.some(dn => s.name.toLowerCase().includes(dn.toLowerCase())));
-
   return (
     <div>
       <OrderForm
         clients={clients}
         allServices={allServices}
-        defaultServices={defaultServices}
         configuredSizes={configuredSizes.map((s) => s.name)}
         configuredColors={configuredColors.map((c) => c.name)}
       />

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "@/lib/company";
 import { logActivity } from "@/lib/logger";
+import { attachDefaultServicesToOrder } from "@/lib/default-op-services";
 
 function deriveOrderStatus(currentStatus: string, totalDelivered: number, totalQuantity: number, sentToWorkshop = 0) {
   if (currentStatus === "CERRADO") return "ENTREGADO";
@@ -75,7 +76,9 @@ export async function createOrder(data: {
             });
           }
 
-          if (data.services.length > 0) {
+          if (data.services.length === 0) {
+            await attachDefaultServicesToOrder(tx, order.id, data.totalQuantity, { createMissing: true });
+          } else {
             for (const s of data.services) {
               // For trackBySize services, calculate requiredQuantity from sizeSplit sum
               const reqQty =
@@ -315,5 +318,92 @@ export async function adjustOrderServiceQty(
     return { success: true };
   } catch (e: any) {
     return { error: e.message || "Error al reajustar." };
+  }
+}
+
+export async function ensureDefaultOrderServices(orderId: number) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { totalQuantity: true, status: true },
+    });
+    if (!order) return { error: "OP no encontrada." };
+    if (["ENTREGADO", "CERRADO", "CANCELADO"].includes(order.status)) {
+      return { error: "No se pueden modificar servicios de una OP cerrada." };
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await attachDefaultServicesToOrder(tx, orderId, order.totalQuantity, { createMissing: true });
+    });
+
+    revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath("/admin/providers/ops");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al asignar servicios." };
+  }
+}
+
+export async function addOrderService(
+  orderId: number,
+  serviceId: number,
+  requiredQuantity: number
+) {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { totalQuantity: true, status: true },
+    });
+    if (!order) return { error: "OP no encontrada." };
+    if (["ENTREGADO", "CERRADO", "CANCELADO"].includes(order.status)) {
+      return { error: "No se pueden agregar servicios a una OP cerrada." };
+    }
+
+    const existing = await prisma.orderService.findFirst({
+      where: { order_id: orderId, service_id: serviceId },
+    });
+    if (existing) return { error: "Este servicio ya está asignado a la OP." };
+
+    const service = await prisma.service.findUnique({ where: { id: serviceId } });
+    if (!service || !service.status) return { error: "Servicio no encontrado." };
+
+    const qty = requiredQuantity > 0 ? requiredQuantity : order.totalQuantity;
+    if (qty < 1) return { error: "La cantidad debe ser al menos 1." };
+
+    await prisma.orderService.create({
+      data: { order_id: orderId, service_id: serviceId, requiredQuantity: qty },
+    });
+
+    await logActivity("ADD_ORDER_SERVICE", `Servicio "${service.name}" agregado a OP #${orderId} (${qty} u.)`);
+    revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath("/admin/providers/ops");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al agregar servicio." };
+  }
+}
+
+export async function removeOrderService(orderServiceId: number, orderId: number) {
+  try {
+    const svc = await prisma.orderService.findUnique({
+      where: { id: orderServiceId },
+      include: {
+        service: { select: { name: true } },
+        deliveries: { select: { id: true } },
+      },
+    });
+    if (!svc) return { error: "Servicio no encontrado." };
+
+    if (svc.deliveries.length > 0) {
+      return { error: "No se puede quitar: ya tiene envíos al taller registrados." };
+    }
+
+    await prisma.orderService.delete({ where: { id: orderServiceId } });
+    await logActivity("REMOVE_ORDER_SERVICE", `Servicio "${svc.service.name}" quitado de OP #${orderId}`);
+    revalidatePath(`/admin/orders/${orderId}`);
+    revalidatePath("/admin/providers/ops");
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || "Error al quitar servicio." };
   }
 }

@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "@/lib/company";
 import { logActivity } from "@/lib/logger";
+import { attachDefaultServicesToOrder } from "@/lib/default-op-services";
 
 async function generateNextPedidoNumber(tx: Prisma.TransactionClient, companyId: number | null) {
   const where = companyId ? { company_id: companyId } : { company_id: null };
@@ -117,6 +118,7 @@ export async function generarOPs(pedidoId: number) {
           },
         },
       });
+      await attachDefaultServicesToOrder(tx, op.id, totalQuantity, { createMissing: true });
       created.push(op);
     }
 

@@ -23,6 +23,26 @@ export async function createService(formData: FormData) {
   }
 }
 
+export async function quickCreateService(
+  name: string
+): Promise<{ id: number; name: string; type: string } | { error: string }> {
+  try {
+    const service = await prisma.service.create({
+      data: {
+        name: name.trim(),
+        type: "externo",
+        trackBySize: false,
+        status: true,
+      },
+    });
+    revalidatePath("/admin/services");
+    return { id: service.id, name: service.name, type: service.type };
+  } catch (e: any) {
+    if (e.code === "P2002") return { error: "El servicio ya existe" };
+    return { error: "Error al crear servicio" };
+  }
+}
+
 export async function updateService(id: number, formData: FormData) {
   try {
     const name = formData.get("name") as string;

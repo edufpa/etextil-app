@@ -1,7 +1,7 @@
 import { getOrderSummary } from "@/app/actions/orders";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { ArrowLeft, Scissors, Pencil, Truck, Ruler } from "lucide-react";
+import { ArrowLeft, Pencil } from "lucide-react";
 import styles from "../../services/services.module.css";
 import { notFound } from "next/navigation";
 import CloseOrderButton from "./CloseOrderButton";
@@ -9,7 +9,7 @@ import DeleteOrderButton from "./DeleteOrderButton";
 import ProviderDeliveryForm from "./ProviderDeliveryForm";
 import DeleteDeliveryButton from "./DeleteDeliveryButton";
 import IncomingPanel from "./IncomingPanel";
-import AdjustQtyButton from "./AdjustQtyButton";
+import OrderServicesPanel from "./OrderServicesPanel";
 
 export const dynamic = 'force-dynamic';
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -17,12 +17,17 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const orderId = parseInt(resolvedParams.id, 10);
   if (isNaN(orderId)) return notFound();
 
-  const [order, providers] = await Promise.all([
+  const [order, providers, catalogServices] = await Promise.all([
     getOrderSummary(orderId),
     prisma.provider.findMany({
       where: { status: true },
       orderBy: { businessName: "asc" },
       include: { services: { select: { service_id: true } } },
+    }),
+    prisma.service.findMany({
+      where: { status: true },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true, type: true },
     }),
   ]);
 
@@ -65,6 +70,25 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   }));
 
   // Build IncomingPanel data: group deliveries (OPs) by service
+  const servicesForPanel = order.services.map((svc: any) => {
+    const sentQty = svc.deliveries.reduce((a: number, d: any) => a + d.quantity, 0);
+    const receivedQty = svc.deliveries.reduce(
+      (a: number, d: any) => a + (d.incomings ?? []).reduce((s: number, i: any) => s + i.quantity, 0),
+      0
+    );
+    return {
+      id: svc.id,
+      serviceId: svc.service_id,
+      serviceName: svc.service.name,
+      serviceType: svc.service.type,
+      requiredQuantity: svc.requiredQuantity,
+      sentQty,
+      receivedQty,
+      providerName: svc.provider?.businessName ?? null,
+      sizeSplit: svc.sizeSplit?.map((sz: any) => ({ size: sz.size, quantity: sz.quantity })) ?? [],
+    };
+  });
+
   const serviceDeliveriesForIncoming = order.services.map((svc: any) => ({
     serviceId: svc.id,
     serviceName: svc.service.name,
@@ -148,61 +172,13 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           {/* Servicios + Avance de Producción */}
           <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
             <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Servicios y Avance de Maquila</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-              {order.services.map((svc: any) => {
-                const sentToTaller = svc.deliveries.reduce((a: number, d: any) => a + d.quantity, 0);
-                const receivedBack = svc.deliveries.reduce((a: number, d: any) => a + (d.incomings ?? []).reduce((s: number, i: any) => s + i.quantity, 0), 0);
-                const pct = svc.requiredQuantity > 0 ? Math.min(100, Math.round(receivedBack / svc.requiredQuantity * 100)) : 0;
-                const sentPct = svc.requiredQuantity > 0 ? Math.min(100, Math.round(sentToTaller / svc.requiredQuantity * 100)) : 0;
-                return (
-                  <div key={svc.id}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.5rem" }}>
-                      <div style={{ color: "var(--primary)" }}><Scissors size={20} /></div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600 }}>{svc.service.name}</div>
-                        <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                          {svc.service.type}
-                          {svc.provider && <span> · <strong style={{ color: "var(--primary)" }}><Truck size={12} style={{ display: "inline" }} /> {svc.provider.businessName}</strong></span>}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: "right", fontSize: "0.82rem", display: "flex", flexDirection: "column", gap: "0.15rem", alignItems: "flex-end" }}>
-                        <span style={{ color: "var(--primary)" }}>Env: <strong>{sentToTaller}</strong></span>
-                        <span style={{ color: "green" }}>Rec: <strong>{receivedBack}</strong></span>
-                        <span style={{ color: "var(--text-muted)" }}>Req: {svc.requiredQuantity}</span>
-                        {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
-                          <AdjustQtyButton
-                            orderServiceId={svc.id}
-                            orderId={order.id}
-                            currentQty={svc.requiredQuantity}
-                            sentQty={sentToTaller}
-                            serviceName={svc.service.name}
-                          />
-                        )}
-                      </div>
-                    </div>
-                    {svc.sizeSplit && svc.sizeSplit.length > 0 && (
-                      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                        {svc.sizeSplit.map((sz: any) => (
-                          <span key={sz.size} style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "var(--bg-color)", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "2px 8px", fontSize: "0.75rem" }}>
-                            <Ruler size={10} style={{ color: "var(--primary)" }} />
-                            <strong style={{ color: "var(--primary)" }}>{sz.size}</strong>: {sz.quantity}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    {/* Double bar: sent (light) + received (solid) */}
-                    <div style={{ position: "relative", height: "8px", background: "var(--bg-color)", borderRadius: "4px", overflow: "hidden", marginBottom: "0.5rem" }}>
-                      <div style={{ position: "absolute", height: "100%", width: `${sentPct}%`, background: "rgba(var(--primary-rgb, 59,130,246),0.25)", borderRadius: "4px" }} />
-                      <div style={{ position: "absolute", height: "100%", width: `${pct}%`, background: pct >= 100 ? "green" : "var(--primary)", transition: "width 0.3s ease" }} />
-                    </div>
-                    <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginBottom: "0.25rem" }}>
-                      {pct}% ingresado · {sentPct}% enviado al taller
-                    </div>
-                  </div>
-                );
-              })}
-              {order.services.length === 0 && <span style={{ color: "var(--text-muted)" }}>No hay servicios asignados.</span>}
-            </div>
+            <OrderServicesPanel
+              orderId={order.id}
+              orderStatus={order.status}
+              totalQuantity={order.totalQuantity}
+              services={servicesForPanel}
+              catalogServices={catalogServices}
+            />
           </div>
 
           {/* OPs y recepciones del taller */}

@@ -1,6 +1,7 @@
 "use client";
 
 import { createOrder } from "@/app/actions/orders";
+import { getDefaultServiceIds } from "@/lib/default-op-services";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import styles from "../services/form.module.css";
@@ -16,13 +17,11 @@ type ServiceEntry = {
 export default function OrderForm({
   clients,
   allServices,
-  defaultServices,
   configuredSizes,
   configuredColors,
 }: {
   clients: any[];
   allServices: any[];
-  defaultServices: any[];
   configuredSizes: string[];
   configuredColors: string[];
 }) {
@@ -34,10 +33,11 @@ export default function OrderForm({
 
   // Service map: service_id -> { checked, quantity, manuallyEdited }
   const [serviceMap, setServiceMap] = useState<Record<number, ServiceEntry>>(() => {
+    const defaultIds = new Set(getDefaultServiceIds(allServices));
     const initial: Record<number, ServiceEntry> = {};
     allServices.forEach((s) => {
       initial[s.id] = {
-        checked: false,  // all unchecked by default
+        checked: defaultIds.has(s.id),
         quantity: 1,
         manuallyEdited: false,
       };

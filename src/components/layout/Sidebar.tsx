@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText, Shirt, BookOpen, PieChart, ChevronDown, ShoppingBag, PackageCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText, Shirt, BookOpen, PieChart, ChevronDown, ShoppingBag, PackageCheck, Menu, X } from "lucide-react";
 import styles from "./Sidebar.module.css";
 
 const mainItems = [
@@ -32,15 +32,37 @@ export default function Sidebar() {
   const pathname = usePathname();
   const configActive = configItems.some((item) => pathname.startsWith(item.path));
   const [configOpen, setConfigOpen] = useState(configActive);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Cierra el menú móvil al navegar
+  useEffect(() => { setMobileOpen(false); }, [pathname]);
 
   const isActive = (path: string) =>
     pathname === path || (pathname.startsWith(path) && path !== "/admin");
 
   return (
-    <aside className={styles.sidebar}>
-      <Link href="/admin" className={styles.logo} style={{ textDecoration: "none" }}>
-        <h1>SIAT</h1>
-      </Link>
+    <aside className={`${styles.sidebar} ${mobileOpen ? styles.open : ""}`}>
+      <div className={styles.brandRow}>
+        <Link href="/admin" className={styles.logo} style={{ textDecoration: "none" }}>
+          <span className={styles.logoMark} aria-hidden="true">S</span>
+          <span className={styles.logoText}>
+            <h1>SIAT</h1>
+            <small>E-Textil</small>
+          </span>
+        </Link>
+        <button
+          type="button"
+          className={styles.menuToggle}
+          onClick={() => setMobileOpen((o) => !o)}
+          aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"}
+          aria-expanded={mobileOpen}
+        >
+          {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+      </div>
+
+      <div className={styles.navWrap}>
+      <div className={styles.sectionLabel}>Operación</div>
 
       {/* Main navigation */}
       <nav className={styles.nav}>
@@ -50,7 +72,7 @@ export default function Sidebar() {
             href={item.path}
             className={`${styles.link} ${isActive(item.path) ? styles.active : ""}`}
           >
-            <item.icon className={styles.icon} size={20} />
+            <item.icon className={styles.icon} size={18} />
             <span>{item.name}</span>
           </Link>
         ))}
@@ -85,6 +107,7 @@ export default function Sidebar() {
             <span>{item.name}</span>
           </Link>
         ))}
+      </div>
       </div>
     </aside>
   );

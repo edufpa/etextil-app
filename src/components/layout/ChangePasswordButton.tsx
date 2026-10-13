@@ -50,7 +50,7 @@ export default function ChangePasswordButton() {
 
       {open && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "1.75rem", width: 360, boxShadow: "var(--shadow-lg)", position: "relative" }}>
+          <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "1.75rem", width: "min(360px, calc(100vw - 2rem))", boxShadow: "var(--shadow-lg)", position: "relative" }}>
             <button onClick={() => setOpen(false)} style={{ position: "absolute", top: "1rem", right: "1rem", background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
               <X size={18} />
             </button>

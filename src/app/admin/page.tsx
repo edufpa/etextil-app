@@ -147,32 +147,54 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
 
   return (
     <div>
-      <h1 className={styles.pageTitle} style={{ marginBottom: "1rem" }}>Dashboard de Producción</h1>
+      <div className={styles.pageHead}>
+        <div>
+          <h1 className={styles.pageTitle}>Dashboard de Producción</h1>
+          <p className={styles.pageSub}>Resumen de los últimos {DAYS} días</p>
+        </div>
+      </div>
 
       {/* KPI Cards */}
-      <div style={{ display: "flex", gap: "1rem", alignItems: "stretch", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-        {/* Entregadas cliente */}
-        <div className={styles.statCardCompact} style={{ flexShrink: 0 }}>
-          <FileText size={18} style={{ color: "green", flexShrink: 0 }} />
+      <div className={styles.kpiGrid}>
+        <div className={styles.kpiCard}>
+          <div className={`${styles.kpiIcon} ${styles.kpiGreen}`}><FileText size={20} /></div>
           <div>
-            <p className={styles.statLabelCompact}>Entregadas Cliente ({DAYS}d)</p>
-            <h3 className={styles.statValueCompact} style={{ color: "green" }}>{totalSunat}</h3>
+            <p className={styles.kpiLabel}>Entregadas a cliente ({DAYS}d)</p>
+            <h3 className={styles.kpiValue}>{totalSunat}</h3>
           </div>
         </div>
 
-        {/* Pending by service chips */}
-        <div style={{ background: "var(--card-bg)", border: "1px solid var(--card-border)", borderRadius: "var(--radius)", padding: "0.75rem 1rem", display: "flex", flexDirection: "column", gap: "0.5rem", flex: 1 }}>
-          <p style={{ fontSize: "0.72rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", margin: 0 }}>Pendiente en Taller por Servicio</p>
+        <Link href="/admin/orders?status=PENDIENTE" className={`${styles.kpiCard} ${styles.kpiLink}`}>
+          <div className={`${styles.kpiIcon} ${styles.kpiAmber}`}><Clock size={20} /></div>
+          <div>
+            <p className={styles.kpiLabel}>Pedidos pendientes</p>
+            <h3 className={styles.kpiValue}>{pendienteOrders.length}</h3>
+          </div>
+        </Link>
+
+        <Link href="/admin/orders?status=EN PROCESO" className={`${styles.kpiCard} ${styles.kpiLink}`}>
+          <div className={`${styles.kpiIcon} ${styles.kpiViolet}`}><Wrench size={20} /></div>
+          <div>
+            <p className={styles.kpiLabel}>En proceso</p>
+            <h3 className={styles.kpiValue}>{enProcesoOrders.length}</h3>
+          </div>
+        </Link>
+      </div>
+
+      {/* Pending by service chips */}
+      <div className={styles.panel} style={{ marginBottom: "1.5rem" }}>
+        <div className={styles.panelHead}>
+          <h2 className={styles.panelTitle}>Pendiente en taller por servicio</h2>
+        </div>
+        <div style={{ padding: "0.9rem 1.25rem" }}>
           {pendingServiceList.length === 0 ? (
-            <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>Sin pendientes</span>
+            <span className={styles.muted}>Sin pendientes</span>
           ) : (
             <div style={{ display: "flex", flexWrap: "wrap", gap: "0.5rem" }}>
               {pendingServiceList.map(([name, { id, pending }]) => (
-                <Link key={id} href={`/admin/services/reporte/${id}`} style={{ textDecoration: "none" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.4rem", background: "rgba(245,158,11,0.1)", border: "1px solid orange", borderRadius: "100px", padding: "0.3rem 0.85rem", fontSize: "0.82rem", cursor: "pointer" }}>
-                    <span style={{ fontWeight: 600, color: "var(--text-color)" }}>{name}</span>
-                    <span style={{ fontWeight: 800, color: "orange" }}>{pending}</span>
-                  </span>
+                <Link key={id} href={`/admin/services/reporte/${id}`} className={styles.chip}>
+                  <span>{name}</span>
+                  <strong>{pending}</strong>
                 </Link>
               ))}
             </div>
@@ -180,23 +202,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
         </div>
       </div>
 
-      {/* ACTIVE ORDERS: PENDIENTE + EN PROCESO */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
-
-        {/* PENDIENTE — solo total */}
-        <Link href="/admin/orders?status=PENDIENTE" style={{ textDecoration: "none" }}>
-          <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", padding: "1.5rem 1.75rem", display: "flex", alignItems: "center", gap: "1rem", height: "100%" }}>
-            <Clock size={28} style={{ color: "orange", flexShrink: 0 }} />
-            <div>
-              <p style={{ fontSize: "0.78rem", fontWeight: 600, color: "var(--text-muted)", textTransform: "uppercase", margin: "0 0 0.25rem" }}>Pedidos Pendientes</p>
-              <h3 style={{ fontSize: "2.5rem", fontWeight: 800, color: "orange", margin: 0, lineHeight: 1 }}>{pendienteOrders.length}</h3>
-            </div>
-          </div>
-        </Link>
+      {/* ACTIVE ORDERS: EN PROCESO */}
+      <div className={styles.twoCol}>
 
         {/* EN PROCESO */}
-        <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", overflow: "hidden" }}>
-          <div style={{ padding: "0.85rem 1.25rem", borderBottom: "1px solid var(--card-border)", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+        <div className={styles.panel}>
+          <div className={styles.panelHead}>
             <Wrench size={16} style={{ color: "#7c3aed" }} />
             <h2 style={{ fontSize: "0.9rem", fontWeight: 700, margin: 0, color: "#7c3aed" }}>
               En Proceso <span style={{ fontWeight: 400, color: "var(--text-muted)", fontSize: "0.8rem" }}>({enProcesoOrders.length})</span>
@@ -225,7 +236,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       </div>
 
       {/* MATRIX TABLE */}
-      <div style={{ background: "var(--card-bg)", borderRadius: "var(--radius)", border: "1px solid var(--card-border)", overflow: "hidden" }}>
+      <div className={styles.panel}>
         <div style={{ padding: "1rem 1.25rem", borderBottom: "1px solid var(--card-border)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
           <div>
             <h2 style={{ fontSize: "0.95rem", fontWeight: 700, margin: 0 }}>

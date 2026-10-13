@@ -1,57 +1,74 @@
 .header {
   height: 64px;
-  background: var(--card-bg);
+  background: rgb(255 255 255 / 0.85);
+  backdrop-filter: saturate(180%) blur(10px);
+  -webkit-backdrop-filter: saturate(180%) blur(10px);
   border-bottom: 1px solid var(--sidebar-border);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   padding: 0 2rem;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
 }
 
-.searchContainer {
-  flex: 1;
+.searchContainer { flex: 1; min-width: 0; }
+
+.searchContainer > div {
+  display: inline-flex !important;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-full);
+  background: var(--primary-50);
+  color: var(--primary-700) !important;
+  font-size: 0.8rem !important;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 1.5rem;
-}
+.actions { display: flex; align-items: center; gap: 0.5rem; }
 
 .profile {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  font-weight: 500;
-  font-size: 0.875rem;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--gray-800);
+  padding-right: 0.5rem;
+  margin-right: 0.25rem;
+  border-right: 1px solid var(--gray-200);
 }
 
 .avatar {
-  background: var(--primary-light);
-  color: var(--primary);
   width: 32px;
   height: 32px;
   border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-100), var(--primary-200));
+  color: var(--primary-700);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .logoutBtn {
-  color: var(--text-muted);
-  display: flex;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border-radius: var(--radius);
-  transition: var(--transition);
+  border-radius: var(--radius-md);
+  color: var(--gray-500);
+  transition: background var(--transition), color var(--transition);
 }
 
-.logoutBtn:hover {
-  background: var(--danger-bg);
-  color: var(--danger);
+.logoutBtn:hover { color: var(--danger); background: var(--danger-bg); }
+
+@media (max-width: 768px) {
+  .header { position: static; height: 52px; padding: 0 1rem; background: var(--gray-50); backdrop-filter: none; }
+  .profile span { display: none; }
+  .profile { border-right: none; padding-right: 0; }
 }

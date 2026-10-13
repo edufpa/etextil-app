@@ -64,7 +64,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       orderBy: { date: "asc" },
     }),
     prisma.guideDetail.findMany({
-      where: { guide: { date: { gte: since, lte: today }, status: "ACTIVA" } },
+      where: { guide: { date: { gte: since, lte: today }, status: "ACTIVA" }, ...(filter.company_id ? { order: { company_id: filter.company_id } } : {}) },
       include: { guide: { select: { date: true } } },
     }),
     prisma.order.findMany({

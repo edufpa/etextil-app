@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { companyFilter } from "@/lib/company";
 import Link from "next/link";
 import { ArrowLeft, Package } from "lucide-react";
 import styles from "../../services/services.module.css";
@@ -14,8 +15,9 @@ export default async function GuideDetailPage({ params }: { params: Promise<{ id
 
   if (isNaN(guideId)) return notFound();
 
-  const guide = await prisma.guide.findUnique({
-    where: { id: guideId },
+  const filter = await companyFilter();
+  const guide = await prisma.guide.findFirst({
+    where: { id: guideId, ...(filter.company_id ? { details: { some: { order: { company_id: filter.company_id } } } } : {}) },
     include: {
       details: {
         include: { order: true }

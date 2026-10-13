@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { companyFilter } from "@/lib/company";
 import Link from "next/link";
 import { Plus, FileText } from "lucide-react";
 import styles from "../services/services.module.css";
@@ -12,7 +13,8 @@ type SearchParams = Promise<{ status?: string; from?: string; to?: string }>;
 export default async function GuidesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
 
-  const where: any = {};
+  const filter = await companyFilter();
+  const where: any = filter.company_id ? { details: { some: { order: { company_id: filter.company_id } } } } : {};
   if (params.status) where.status = params.status;
   if (params.from || params.to) {
     where.date = {};

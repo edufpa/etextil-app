@@ -1,12 +1,15 @@
 import { prisma } from "@/lib/prisma";
+import { companyFilter } from "@/lib/company";
 import GuideForm from "../GuideForm";
 
 export const dynamic = 'force-dynamic';
 
 export default async function NewGuidePage() {
   // Traer pedidos activos con sus tallas y entregas previas por talla
+  const filter = await companyFilter();
   const availableOrders = await prisma.order.findMany({
     where: {
+      ...filter,
       status: { notIn: ["CERRADO", "CANCELADO"] }
     },
     include: {

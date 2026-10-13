@@ -1,0 +1,64 @@
+.section { margin-bottom: var(--space-8); }
+.sectionHead { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap; }
+.sectionTitle { margin: 0; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem; }
+
+.drop {
+  border: 1.5px dashed var(--gray-300); border-radius: var(--radius); background: var(--card-bg);
+  padding: 1.1rem; display: flex; align-items: center; justify-content: center; gap: 0.75rem;
+  color: var(--text-muted); font-size: 0.875rem; text-align: center; transition: all var(--transition); cursor: pointer;
+}
+.drop:hover, .dropActive { border-color: var(--primary); background: var(--primary-50); color: var(--primary-700); }
+.drop strong { color: var(--primary); }
+
+.list { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.file {
+  display: flex; align-items: center; gap: 0.85rem; padding: 0.7rem 0.85rem;
+  background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); box-shadow: var(--shadow-xs);
+}
+.fileIcon { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center; flex-shrink: 0; background: var(--danger-bg); color: var(--danger); }
+.fileIconImg { background: var(--info-bg); color: var(--info); }
+.fileMeta { flex: 1; min-width: 0; }
+.fileName { font-weight: 600; font-size: 0.875rem; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.fileName:hover { color: var(--primary); }
+.fileSub { font-size: 0.75rem; color: var(--text-muted); }
+.fileActions { display: flex; gap: 0.25rem; }
+.iconBtn {
+  width: 34px; height: 34px; border-radius: var(--radius-md); display: inline-flex; align-items: center; justify-content: center;
+  color: var(--gray-500); transition: background var(--transition), color var(--transition);
+}
+.iconBtn:hover { background: var(--gray-100); color: var(--gray-900); }
+.iconBtnDanger:hover { background: var(--danger-bg); color: var(--danger); }
+
+.progress { height: 4px; border-radius: 99px; background: var(--gray-100); overflow: hidden; margin-top: 0.35rem; }
+.progress > div { height: 100%; background: var(--primary); transition: width 0.2s; }
+
+.msgErr { margin-top: 0.5rem; padding: 0.55rem 0.8rem; border-radius: var(--radius-md); background: var(--danger-bg); color: var(--danger-fg); font-size: 0.82rem; font-weight: 500; }
+.msgOk { margin-top: 0.5rem; padding: 0.55rem 0.8rem; border-radius: var(--radius-md); background: var(--success-bg); color: var(--success-fg); font-size: 0.82rem; font-weight: 500; }
+.empty { font-size: 0.85rem; color: var(--text-muted); padding: 0.5rem 0.25rem; }
+
+/* Imagen del ítem */
+.thumbWrap { display: flex; flex-direction: column; align-items: center; gap: 0.35rem; flex-shrink: 0; width: 112px; }
+.thumb {
+  width: 112px; height: 112px; border-radius: var(--radius); border: 1px solid var(--card-border); background: var(--gray-50);
+  overflow: hidden; display: grid; place-items: center; position: relative;
+}
+.thumb img { width: 100%; height: 100%; object-fit: contain; }
+.thumbEmpty { color: var(--gray-400); border-style: dashed; cursor: pointer; flex-direction: column; font-size: 0.7rem; gap: 0.25rem; display: flex; align-items: center; justify-content: center; }
+.thumbEmpty:hover { border-color: var(--primary); color: var(--primary); background: var(--primary-50); }
+.thumbBtns { display: flex; gap: 0.25rem; }
+.tinyBtn { font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.45rem; border-radius: 6px; color: var(--gray-600); display: inline-flex; align-items: center; gap: 0.2rem; }
+.tinyBtn:hover { background: var(--gray-100); color: var(--gray-900); }
+.tinyBtnDanger:hover { background: var(--danger-bg); color: var(--danger); }
+.thumbBusy { position: absolute; inset: 0; background: rgb(255 255 255 / 0.7); display: grid; place-items: center; }
+.spin { animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Lightbox */
+.lightbox { position: fixed; inset: 0; background: rgb(17 21 33 / 0.75); display: grid; place-items: center; z-index: 100; padding: 1rem; cursor: zoom-out; }
+.lightbox img { max-width: min(1000px, 100%); max-height: 90vh; border-radius: var(--radius); background: #fff; box-shadow: var(--shadow-lg); }
+
+@media (max-width: 640px) {
+  .thumbWrap { width: 84px; }
+  .thumb { width: 84px; height: 84px; }
+  .file { flex-wrap: wrap; }
+}

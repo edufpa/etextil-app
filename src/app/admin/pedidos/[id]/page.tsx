@@ -6,6 +6,8 @@ import { ArrowLeft, Package, ShoppingBag } from "lucide-react";
 import styles from "../../services/services.module.css";
 import GenerarOpsButton from "./GenerarOpsButton";
 import DeletePedidoButton from "./DeletePedidoButton";
+import PedidoFilesPanel from "@/components/pedidos/PedidoFilesPanel";
+import ItemImage from "@/components/pedidos/ItemImage";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +35,14 @@ export default async function PedidoDetailPage({ params }: { params: Params }) {
     include: {
       client: true,
       items: {
-        include: { sizes: { orderBy: { size: "asc" } } },
+        include: {
+          sizes: { orderBy: { size: "asc" } },
+          image: { select: { updatedAt: true } }, // nunca cargar los bytes aquí
+        },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+      },
+      files: {
+        select: { id: true, name: true, mimeType: true, size: true, createdAt: true },
         orderBy: { createdAt: "asc" },
       },
       ops: {
@@ -62,7 +71,7 @@ export default async function PedidoDetailPage({ params }: { params: Params }) {
   const statusColor = STATUS_COLORS[pedido.status] || "#94a3b8";
 
   return (
-    <div style={{ maxWidth: 900 }}>
+    <div style={{ maxWidth: 1000 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
@@ -110,36 +119,46 @@ export default async function PedidoDetailPage({ params }: { params: Params }) {
             return (
               <div key={item.id} style={{
                 background: "var(--card-bg)", border: "1px solid var(--card-border)",
-                borderLeft: "3px solid var(--primary)", borderRadius: "var(--radius)",
-                padding: "0.9rem 1.1rem",
+                borderRadius: "var(--radius)", boxShadow: "var(--shadow-xs)",
+                padding: "0.85rem 1rem", display: "flex", gap: "1rem", alignItems: "flex-start",
               }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <div>
-                    <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{item.garment}</span>
-                    <span style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginLeft: "0.5rem" }}>— {item.color}</span>
-                    {item.notes && (
-                      <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "0.75rem", fontStyle: "italic" }}>
-                        {item.notes}
-                      </span>
-                    )}
+                <ItemImage
+                  itemId={item.id}
+                  version={item.image ? new Date(item.image.updatedAt).getTime() : null}
+                  label={`${item.garment} — ${item.color}`}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: "0.72rem", color: "var(--text-subtle)", fontWeight: 600 }}>#{idx + 1}{item.sku ? ` · ${item.sku}` : ""}</div>
+                      <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{item.garment}</span>
+                      <span style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginLeft: "0.5rem" }}>— {item.color}</span>
+                    </div>
+                    <span className="pill pill-primary" style={{ fontSize: "0.8rem" }}>{itemTotal} u.</span>
                   </div>
-                  <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "var(--primary)" }}>{itemTotal} u.</span>
-                </div>
-                <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-                  {item.sizes.map((sz) => (
-                    <span key={sz.id} style={{
-                      background: "var(--primary)", color: "white",
-                      padding: "2px 10px", borderRadius: "999px", fontSize: "0.75rem", fontWeight: 600,
-                    }}>
-                      {sz.size}: {sz.quantity}
-                    </span>
-                  ))}
+                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                    {item.sizes.map((sz) => (
+                      <span key={sz.id} className="pill">
+                        <strong>{sz.size}</strong> {sz.quantity}
+                      </span>
+                    ))}
+                  </div>
+                  {item.notes && (
+                    <div style={{ fontSize: "0.78rem", color: "var(--gray-600)", marginTop: "0.55rem", whiteSpace: "pre-line", background: "var(--gray-50)", borderRadius: "var(--radius-md)", padding: "0.5rem 0.65rem" }}>
+                      {item.notes}
+                    </div>
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
+
+      <PedidoFilesPanel
+        pedidoId={pedido.id}
+        files={pedido.files.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() }))}
+      />
 
       {/* OPs generadas */}
       <div>

@@ -278,6 +278,7 @@ model Pedido {
   updatedAt    DateTime     @updatedAt
   items        PedidoItem[]
   ops          Order[]
+  files        PedidoFile[]
 
   @@unique([company_id, pedidoNumber])
 }
@@ -294,6 +295,7 @@ model PedidoItem {
   moneda          String           @default("PEN")
   notes           String?
   sizes           PedidoItemSize[]
+  image           PedidoItemImage?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 }
@@ -346,4 +348,30 @@ model Garment {
   company     Company? @relation(fields: [company_id], references: [id])
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+// Archivos adjuntos del pedido (PDF/imágenes), guardados en Postgres
+model PedidoFile {
+  id        Int      @id @default(autoincrement())
+  pedido_id Int
+  pedido    Pedido   @relation(fields: [pedido_id], references: [id], onDelete: Cascade)
+  name      String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([pedido_id])
+}
+
+// Imagen de la prenda de un ítem del pedido (tabla aparte para no cargar bytes en listados)
+model PedidoItemImage {
+  id            Int        @id @default(autoincrement())
+  pedidoItem_id Int        @unique
+  pedidoItem    PedidoItem @relation(fields: [pedidoItem_id], references: [id], onDelete: Cascade)
+  mimeType      String
+  size          Int
+  data          Bytes
+  updatedAt     DateTime   @updatedAt
+  createdAt     DateTime   @default(now())
 }

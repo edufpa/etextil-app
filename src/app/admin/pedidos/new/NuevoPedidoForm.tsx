@@ -9,10 +9,13 @@ import { quickCreateClient } from "@/app/actions/clients";
 import { quickCreateGarment } from "@/app/actions/garments";
 import { quickCreateColor } from "@/app/actions/colors";
 import { quickCreateSize } from "@/app/actions/sizes";
+import { setPedidoItemImage } from "@/app/actions/pedidoFiles";
+import { compressImage } from "@/lib/client-image";
+import { ImagePlus } from "lucide-react";
 
 type Option = { id: number; name: string };
 type SizeRow = { size: string; quantity: number; precio: string };
-type ItemRow = { garment: string; color: string; sku: string; moneda: string; notes: string; sizes: SizeRow[] };
+type ItemRow = { garment: string; color: string; sku: string; moneda: string; notes: string; sizes: SizeRow[]; image?: File | null };
 
 type ModalTarget =
   | { type: "client" }
@@ -143,6 +146,8 @@ export default function NuevoPedidoForm({
   const updateItem = (idx: number, field: keyof Omit<ItemRow, "sizes">, value: string) =>
     setItems((p) => p.map((it, i) => i !== idx ? it : { ...it, [field]: value }));
   const addItem = () => setItems((p) => [...p, emptyItem()]);
+  const setItemImage = (idx: number, f: File | null) =>
+    setItems((p) => p.map((it, i) => (i !== idx ? it : { ...it, image: f })));
   const removeItem = (idx: number) => setItems((p) => p.filter((_, i) => i !== idx));
   const updateSize = (ii: number, si: number, field: keyof SizeRow, value: string | number) =>
     setItems((p) => p.map((it, i) => i !== ii ? it : {
@@ -245,6 +250,19 @@ export default function NuevoPedidoForm({
           })),
         })),
       });
+      // Subir imágenes opcionales de cada ítem (los ítems se crean en el mismo orden)
+      const imgErrors: string[] = [];
+      for (let i = 0; i < items.length; i++) {
+        const f = items[i].image;
+        const itemId = pedido.items?.[i]?.id;
+        if (!f || !itemId) continue;
+        const fd = new FormData();
+        fd.set("itemId", String(itemId));
+        fd.set("image", await compressImage(f), f.name);
+        const r = await setPedidoItemImage(fd);
+        if ("error" in r) imgErrors.push(`${items[i].garment} ${items[i].color}: ${r.error}`);
+      }
+      if (imgErrors.length) alert(`El pedido se creó, pero algunas imágenes no se subieron:\n${imgErrors.join("\n")}`);
       router.push(`/admin/pedidos/${pedido.id}`);
     } catch (err: any) {
       setError(err.message || "Error al crear pedido");
@@ -414,11 +432,29 @@ export default function NuevoPedidoForm({
                   </div>
                 </div>
 
-                {/* Nota */}
-                <div style={{ padding: "0 1.25rem 0.9rem" }}>
+                {/* Nota + imagen opcional */}
+                <div style={{ padding: "0 1.25rem 0.9rem", display: "flex", gap: "0.6rem", alignItems: "center", flexWrap: "wrap" }}>
                   <input value={item.notes} onChange={(e) => updateItem(ii, "notes", e.target.value)}
                     placeholder="Nota del ítem (opcional)..."
-                    style={{ ...inp, fontSize: "0.8rem", color: "var(--text-muted)" }} />
+                    style={{ ...inp, fontSize: "0.8rem", color: "var(--text-muted)", flex: "1 1 240px", width: "auto" }} />
+                  <label style={{
+                    display: "inline-flex", alignItems: "center", gap: "0.4rem", cursor: "pointer",
+                    padding: "0.4rem 0.7rem", borderRadius: "8px", border: "1px dashed var(--gray-300)",
+                    fontSize: "0.78rem", fontWeight: 600, color: item.image ? "var(--primary)" : "var(--gray-600)",
+                    background: item.image ? "var(--primary-50)" : "transparent", maxWidth: 260,
+                  }} title="Imagen de la prenda (opcional)">
+                    <ImagePlus size={14} />
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {item.image ? item.image.name : "Imagen (opcional)"}
+                    </span>
+                    <input type="file" accept="image/*" hidden onChange={(e) => setItemImage(ii, e.target.files?.[0] ?? null)} />
+                  </label>
+                  {item.image && (
+                    <button type="button" onClick={() => setItemImage(ii, null)} title="Quitar imagen"
+                      style={{ fontSize: "0.75rem", color: "var(--danger)", padding: "0.3rem 0.4rem" }}>
+                      Quitar
+                    </button>
+                  )}
                 </div>
               </div>
             );

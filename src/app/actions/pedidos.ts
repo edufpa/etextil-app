@@ -76,6 +76,7 @@ export async function createPedido(data: {
           })),
         },
       },
+      select: { id: true, pedidoNumber: true, items: { select: { id: true }, orderBy: { id: "asc" } } },
     });
   });
 

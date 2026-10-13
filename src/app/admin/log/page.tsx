@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getSessionCompanyId } from "@/lib/company";
 import { ScrollText, User, Clock } from "lucide-react";
 import styles from "../services/services.module.css";
 import { Suspense } from "react";
@@ -22,7 +23,9 @@ const ACTION_LABELS: Record<string, { label: string; color: string }> = {
 export default async function LogPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
 
-  const where: any = {};
+  const companyId = await getSessionCompanyId();
+  const scope: any = companyId !== null ? { companyId } : {};
+  const where: any = { ...scope };
   if (params.action) where.action = params.action;
   if (params.user) where.username = { contains: params.user, mode: "insensitive" };
   if (params.from || params.to) {
@@ -38,6 +41,7 @@ export default async function LogPage({ searchParams }: { searchParams: SearchPa
       take: 500,
     }),
     prisma.activityLog.findMany({
+      where: scope,
       select: { username: true },
       distinct: ["username"],
       orderBy: { username: "asc" },

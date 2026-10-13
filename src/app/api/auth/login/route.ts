@@ -5,13 +5,13 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword, verifyPassword } from "@/lib/password";
 
 async function ensureGlobalAdmin() {
-  const email = "site.eduardo@gmail.com";
+  const email = "eduardo@butik.ai";
   const username = "site.eduardo";
-  const password = "M@rtillo100";
+  const password = "Admin1234";
   const passwordHash = hashPassword(password);
 
   const existing = await prisma.appUser.findFirst({
-    where: { OR: [{ email }, { username: "eduardo" }, { username }] },
+    where: { OR: [{ email }, { email: "site.eduardo@gmail.com" }, { username: "eduardo" }, { username }] },
   });
 
   if (!existing) {

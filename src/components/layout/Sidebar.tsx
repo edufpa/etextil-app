@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText, Shirt, BookOpen, PieChart, ChevronDown, ShoppingBag } from "lucide-react";
+import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText, Shirt, BookOpen, PieChart, ChevronDown, ShoppingBag, PackageCheck } from "lucide-react";
 import styles from "./Sidebar.module.css";
 
 const mainItems = [
   { name: "Dashboard", path: "/admin", icon: LayoutDashboard },
   { name: "Pedidos", path: "/admin/pedidos", icon: ShoppingBag },
   { name: "OPs", path: "/admin/orders", icon: ClipboardList },
+  { name: "Taller por proveedor", path: "/admin/taller", icon: PackageCheck },
   { name: "Despachos", path: "/admin/guides", icon: FileText },
   { name: "Reporte Talleres", path: "/admin/providers/reporte", icon: BarChart2 },
   { name: "Reporte Servicios", path: "/admin/services/reporte", icon: PieChart },

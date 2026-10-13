@@ -14,3 +14,9 @@
   padding: 2rem;
   flex: 1;
 }
+
+@media (max-width: 768px) {
+  .adminContainer { flex-direction: column; }
+  .mainContent { margin-left: 0; min-width: 0; }
+  .pageContent { padding: 1rem; }
+}

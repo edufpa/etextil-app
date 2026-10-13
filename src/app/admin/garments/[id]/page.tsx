@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import { getSessionCompanyId } from "@/lib/company";
 import { notFound } from "next/navigation";
@@ -21,7 +22,7 @@ export default async function EditGarmentPage({ params }: { params: Promise<{ id
     }),
   ]);
 
-  if (!garment) return notFound();
+  if (!garment || !(await canAccessCompany(garment.company_id))) return notFound();
 
   return (
     <div>

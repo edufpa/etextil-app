@@ -91,7 +91,7 @@ export async function generarOPs(pedidoId: number) {
     where: { id: pedidoId },
     include: { items: { include: { sizes: true } }, client: true },
   });
-  if (!pedido) throw new Error("Pedido no encontrado");
+  if (!pedido || (companyId !== null && pedido.company_id !== companyId)) throw new Error("Pedido no encontrado");
 
   const ops = await prisma.$transaction(async (tx) => {
     const created = [];
@@ -139,8 +139,8 @@ export async function generarOPs(pedidoId: number) {
 
 export async function deletePedido(pedidoId: number) {
   const companyId = await getSessionCompanyId();
-  const pedido = await prisma.pedido.findUnique({ where: { id: pedidoId }, select: { pedidoNumber: true, ops: { select: { id: true } } } });
-  if (!pedido) throw new Error("Pedido no encontrado");
+  const pedido = await prisma.pedido.findUnique({ where: { id: pedidoId }, select: { pedidoNumber: true, company_id: true, ops: { select: { id: true } } } });
+  if (!pedido || (companyId !== null && pedido.company_id !== companyId)) throw new Error("Pedido no encontrado");
   if (pedido.ops.length > 0) throw new Error("No se puede eliminar un pedido con OPs generadas");
 
   await prisma.pedido.delete({ where: { id: pedidoId } });

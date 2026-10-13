@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import ClientForm from "../ClientForm";
 import { notFound } from "next/navigation";
@@ -16,7 +17,7 @@ export default async function EditClientPage({ params }: { params: Params }) {
     where: { id },
   });
 
-  if (!client) return notFound();
+  if (!client || !(await canAccessCompany(client.company_id))) return notFound();
 
   return (
     <div>

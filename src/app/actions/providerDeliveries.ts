@@ -3,46 +3,11 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/logger";
+import { getSessionCompanyId } from "@/lib/company";
+import { friendlyError, UserError } from "@/lib/errors";
+import { assertDeliveryAccess, createDeliveriesTx, requiredBySize, TX_OPTS } from "@/lib/workshop-guard";
 
-export async function createProviderDelivery(data: {
-  orderService_id: number;
-  provider_id: number;
-  size?: string | null;
-  date: Date;
-  quantity: number;
-  notes?: string;
-}) {
-  try {
-    const orderService = await prisma.orderService.findUnique({
-      where: { id: data.orderService_id },
-      include: {
-        service: { select: { trackBySize: true } },
-        deliveries: { select: { quantity: true, size: true } },
-        order: { select: { id: true } },
-      },
-    });
-
-    if (!orderService) return { error: "Servicio del pedido no encontrado." };
-    if (data.quantity <= 0) return { error: "La cantidad debe ser mayor a 0." };
-
-    const alreadyDelivered = orderService.deliveries.reduce((s, d) => s + d.quantity, 0);
-    const remaining = orderService.requiredQuantity - alreadyDelivered;
-
-    if (data.quantity > remaining) {
-      return { error: `Saldo disponible: ${remaining}. No se puede registrar ${data.quantity}.` };
-    }
-
-    await prisma.providerDelivery.create({ data });
-
-    revalidatePath(`/admin/orders/${orderService.order.id}`);
-    return { success: true };
-  } catch (error: any) {
-    console.error(error);
-    return { error: error.message || "Error al registrar la entrega." };
-  }
-}
-
-/** Creates one ProviderDelivery per size in a single transaction. */
+/** Creates one ProviderDelivery per size in a single transaction (validates company, total and per-size caps). */
 export async function createProviderDeliveryBatch(data: {
   orderService_id: number;
   provider_id: number;
@@ -51,48 +16,19 @@ export async function createProviderDeliveryBatch(data: {
   sizes: { size: string; quantity: number }[];
 }) {
   try {
-    const orderService = await prisma.orderService.findUnique({
-      where: { id: data.orderService_id },
-      include: {
-        deliveries: { select: { quantity: true } },
-        order: { select: { id: true } },
-      },
-    });
-
-    if (!orderService) return { error: "Servicio del pedido no encontrado." };
-
-    const validSizes = data.sizes.filter((s) => s.quantity > 0);
-    if (validSizes.length === 0) return { error: "Ingresa al menos una cantidad mayor a 0." };
-
-    const totalBatch = validSizes.reduce((s, sz) => s + sz.quantity, 0);
-    const alreadyDelivered = orderService.deliveries.reduce((s, d) => s + d.quantity, 0);
-    const remaining = orderService.requiredQuantity - alreadyDelivered;
-
-    if (totalBatch > remaining) {
-      return { error: `Total del lote (${totalBatch}) supera el saldo disponible (${remaining}).` };
-    }
-
-    await prisma.$transaction(
-      validSizes.map((sz) =>
-        prisma.providerDelivery.create({
-          data: {
-            orderService_id: data.orderService_id,
-            provider_id: data.provider_id,
-            size: sz.size,
-            date: data.date,
-            quantity: sz.quantity,
-            notes: data.notes,
-          },
-        })
-      )
+    const companyId = await getSessionCompanyId();
+    const res = await prisma.$transaction((tx) => createDeliveriesTx(tx, companyId, data), TX_OPTS);
+    revalidatePath(`/admin/orders/${res.os.order.id}`);
+    revalidatePath(`/admin/providers/ops`);
+    revalidatePath(`/admin/taller`);
+    await logActivity(
+      "REGISTER_OP",
+      `Salida a taller ${res.provider.businessName} — OP ${res.os.order.orderNumber} · ${res.os.service.name}: ${res.valid.map((s) => `${s.size || "s/t"} ${s.quantity}u`).join(", ")}`
     );
-
-    revalidatePath(`/admin/orders/${orderService.order.id}`);
-    await logActivity("REGISTER_OP", `OP creada para pedido #${orderService.order.id}: ${validSizes.map(s => `${s.size} ${s.quantity}u`).join(", ")}`);
     return { success: true };
-  } catch (error: any) {
+  } catch (error) {
     console.error(error);
-    return { error: error.message || "Error al registrar el lote." };
+    return { error: friendlyError(error, "Error al registrar la salida al taller.") };
   }
 }
 
@@ -102,58 +38,60 @@ export async function updateProviderDelivery(id: number, orderId: number, data: 
   notes?: string;
 }) {
   try {
-    // Validate quantity is not below already-received incomings
-    const delivery = await prisma.providerDelivery.findUnique({
-      where: { id },
-      include: { incomings: { select: { quantity: true } } },
-    });
-    if (!delivery) return { error: "OP no encontrada." };
-    if (data.quantity <= 0) return { error: "La cantidad debe ser mayor a 0." };
-
-    const alreadyIn = delivery.incomings.reduce((s, i) => s + i.quantity, 0);
-    if (data.quantity < alreadyIn) {
-      return { error: `Ya se ingresaron ${alreadyIn} u. No se puede reducir a ${data.quantity}.` };
-    }
-
-    await prisma.providerDelivery.update({ where: { id }, data });
-    revalidatePath(`/admin/orders/${orderId}`);
+    const companyId = await getSessionCompanyId();
+    const d = await prisma.$transaction(async (tx) => {
+      const d = await assertDeliveryAccess(tx, id, companyId);
+      if (!Number.isInteger(data.quantity) || data.quantity <= 0) throw new UserError("La cantidad debe ser un entero mayor a 0.");
+      const alreadyIn = d.incomings.reduce((s, i) => s + i.quantity, 0);
+      if (data.quantity < alreadyIn) {
+        throw new UserError(`Ya se ingresaron ${alreadyIn} u. No se puede reducir a ${data.quantity}.`);
+      }
+      const os = d.orderService;
+      const othersTotal = os.deliveries.filter((x) => x.id !== id).reduce((a, x) => a + x.quantity, 0);
+      if (othersTotal + data.quantity > os.requiredQuantity) {
+        throw new UserError(`${os.service.name}: máximo permitido para esta salida es ${os.requiredQuantity - othersTotal} u.`);
+      }
+      if (d.size) {
+        const req = requiredBySize(os).get(d.size);
+        if (req !== undefined) {
+          const othersSize = os.deliveries.filter((x) => x.id !== id && x.size === d.size).reduce((a, x) => a + x.quantity, 0);
+          if (othersSize + data.quantity > req) {
+            throw new UserError(`${os.service.name}, talla ${d.size}: máximo permitido para esta salida es ${req - othersSize} u.`);
+          }
+        }
+      }
+      await tx.providerDelivery.update({ where: { id }, data });
+      return d;
+    }, TX_OPTS);
+    revalidatePath(`/admin/orders/${d.orderService.order.id}`);
     revalidatePath(`/admin/providers/ops`);
+    revalidatePath(`/admin/taller`);
+    await logActivity("UPDATE_OP", `Salida #${id} (OP ${d.orderService.order.orderNumber}) actualizada: ${d.quantity} → ${data.quantity} u`);
     return { success: true };
-  } catch (e: any) {
-    return { error: e.message || "Error al actualizar la OP." };
+  } catch (e) {
+    console.error(e);
+    return { error: friendlyError(e, "Error al actualizar la salida al taller.") };
   }
 }
 
 export async function deleteProviderDelivery(id: number, orderId: number) {
   try {
-    await prisma.providerDelivery.delete({ where: { id } });
-    revalidatePath(`/admin/orders/${orderId}`);
+    const companyId = await getSessionCompanyId();
+    const d = await prisma.$transaction(async (tx) => {
+      const d = await assertDeliveryAccess(tx, id, companyId);
+      if (d.incomings.length > 0) {
+        throw new UserError("No se puede eliminar: esta salida ya tiene ingresos. Elimina primero los ingresos.");
+      }
+      await tx.providerDelivery.delete({ where: { id } });
+      return d;
+    });
+    revalidatePath(`/admin/orders/${d.orderService.order.id}`);
     revalidatePath(`/admin/providers/ops`);
+    revalidatePath(`/admin/taller`);
+    await logActivity("DELETE_OP", `Salida #${id} eliminada (OP ${d.orderService.order.orderNumber} · ${d.orderService.service.name}${d.size ? ` · ${d.size}` : ""}: ${d.quantity} u)`);
     return { success: true };
   } catch (error) {
-    return { error: "Error al eliminar la entrega." };
+    console.error(error);
+    return { error: friendlyError(error, "Error al eliminar la salida.") };
   }
-}
-
-export async function getDashboardMatrix(days: number = 14) {
-  const since = new Date();
-  since.setDate(since.getDate() - days + 1);
-  since.setHours(0, 0, 0, 0);
-
-  const [deliveries, guides] = await Promise.all([
-    prisma.providerDelivery.findMany({
-      where: { date: { gte: since } },
-      include: {
-        orderService: { include: { service: { select: { name: true } } } },
-      },
-      orderBy: { date: "asc" },
-    }),
-    prisma.guideDetail.findMany({
-      where: { guide: { date: { gte: since }, status: "ACTIVA" } },
-      include: { guide: { select: { date: true } } },
-      orderBy: { guide: { date: "asc" } },
-    }),
-  ]);
-
-  return { deliveries, guides };
 }

@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -27,7 +28,7 @@ export default async function ProviderReportPage({
   const toDate = sp.to ? new Date(sp.to + "T23:59:59") : null;
 
   const provider = await prisma.provider.findUnique({ where: { id: providerId } });
-  if (!provider) return notFound();
+  if (!provider || !(await canAccessCompany(provider.company_id))) return notFound();
 
   const deliveries = await prisma.providerDelivery.findMany({
     where: {

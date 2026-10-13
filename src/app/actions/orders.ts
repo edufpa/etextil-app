@@ -6,6 +6,21 @@ import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "@/lib/company";
 import { logActivity } from "@/lib/logger";
 import { attachDefaultServicesToOrder } from "@/lib/default-op-services";
+import { friendlyError, UserError } from "@/lib/errors";
+
+/** Throws UserError if the OP doesn't exist or belongs to another company. */
+async function assertOrderAccess(orderId: number) {
+  const companyId = await getSessionCompanyId();
+  const o = await prisma.order.findUnique({ where: { id: orderId }, select: { company_id: true } });
+  if (!o || (companyId !== null && o.company_id !== companyId)) throw new UserError("OP no encontrada.");
+}
+
+/** Throws if the order service doesn't belong to the given OP (and company). */
+async function assertOrderServiceAccess(orderServiceId: number, orderId: number) {
+  await assertOrderAccess(orderId);
+  const os = await prisma.orderService.findUnique({ where: { id: orderServiceId }, select: { order_id: true } });
+  if (!os || os.order_id !== orderId) throw new UserError("Servicio no encontrado en esta OP.");
+}
 
 function deriveOrderStatus(currentStatus: string, totalDelivered: number, totalQuantity: number, sentToWorkshop = 0) {
   if (currentStatus === "CERRADO") return "ENTREGADO";
@@ -128,6 +143,7 @@ export async function createOrder(data: {
 
 export async function deleteOrder(orderId: number) {
   try {
+    await assertOrderAccess(orderId);
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       select: { orderNumber: true, garment: true, totalQuantity: true },
@@ -140,11 +156,12 @@ export async function deleteOrder(orderId: number) {
     revalidatePath("/admin/orders");
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || "Error al eliminar el pedido." };
+    return { error: friendlyError(e, "Error al eliminar la OP.") };
   }
 }
 
 export async function getOrderSummary(orderId: number) {
+  const sessionCompanyId = await getSessionCompanyId();
   const order = await prisma.order.findUnique({
     where: { id: orderId },
     include: {
@@ -159,13 +176,6 @@ export async function getOrderSummary(orderId: number) {
             include: { incomings: { orderBy: { date: "desc" } } },
           },
           sizeSplit: { orderBy: { size: "asc" } },
-          assignments: {
-            include: {
-              provider: true,
-              receptions: { orderBy: { receivedDate: "desc" } },
-            },
-            orderBy: { sentDate: "desc" },
-          },
         },
       },
       guides: { include: { guide: true } },
@@ -173,6 +183,7 @@ export async function getOrderSummary(orderId: number) {
   });
 
   if (!order) return null;
+  if (sessionCompanyId !== null && order.company_id !== sessionCompanyId) return null;
 
   const totalDelivered = order.guides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
   const sentToWorkshop = order.services.reduce((acc, svc) =>
@@ -185,6 +196,7 @@ export async function getOrderSummary(orderId: number) {
 
 export async function closeOrderManually(orderId: number) {
   try {
+    await assertOrderAccess(orderId);
     await prisma.order.update({
       where: { id: orderId },
       data: { status: "ENTREGADO" },
@@ -194,7 +206,7 @@ export async function closeOrderManually(orderId: number) {
     return { success: true };
   } catch (error) {
     console.error(error);
-    return { error: "Error al actualizar el pedido" };
+    return { error: friendlyError(error, "Error al actualizar la OP.") };
   }
 }
 
@@ -217,6 +229,7 @@ export async function updateOrder(
   }
 ) {
   try {
+    await assertOrderAccess(orderId);
     const sumSizes = data.sizes.reduce((acc, curr) => acc + curr.quantity, 0);
     if (sumSizes !== data.totalQuantity) {
       return { error: `La suma de las tallas (${sumSizes}) no coincide con la cantidad total (${data.totalQuantity}).` };
@@ -227,7 +240,7 @@ export async function updateOrder(
       const totalDelivered = existingGuides.reduce((acc, g) => acc + g.deliveredQuantity, 0);
 
       if (data.totalQuantity < totalDelivered) {
-        throw new Error(
+        throw new UserError(
           `No se puede reducir el total a ${data.totalQuantity}. Ya se han despachado ${totalDelivered} unidades.`
         );
       }
@@ -244,15 +257,68 @@ export async function updateOrder(
         });
       }
 
-      // Delete old services (cascade deletes sizeSplit and assignments)
-      await tx.orderService.deleteMany({ where: { order_id: orderId } });
-      if (data.services.length > 0) {
-        for (const s of data.services) {
-          const reqQty =
-            s.sizeSplit && s.sizeSplit.length > 0
-              ? s.sizeSplit.reduce((a, sz) => a + sz.quantity, 0)
-              : s.requiredQuantity;
+      // Update services IN PLACE: never delete services that have movements (salidas/ingresos).
+      const existingServices = await tx.orderService.findMany({
+        where: { order_id: orderId },
+        include: {
+          service: { select: { name: true } },
+          deliveries: { select: { quantity: true, size: true } },
+          sizeSplit: true,
+        },
+      });
+      const incomingIds = new Set(data.services.map((s) => s.service_id));
 
+      for (const ex of existingServices) {
+        if (!incomingIds.has(ex.service_id)) {
+          if (ex.deliveries.length > 0) {
+            throw new UserError(
+              `No se puede quitar el servicio "${ex.service.name}": ya tiene salidas al taller registradas. Elimina primero sus salidas e ingresos.`
+            );
+          }
+          await tx.orderService.delete({ where: { id: ex.id } });
+        }
+      }
+
+      const newSizeMap = new Map(data.sizes.map((s) => [s.size, s.quantity]));
+
+      for (const s of data.services) {
+        const reqQty =
+          s.sizeSplit && s.sizeSplit.length > 0
+            ? s.sizeSplit.reduce((a, sz) => a + sz.quantity, 0)
+            : s.requiredQuantity;
+        const ex = existingServices.find((e) => e.service_id === s.service_id);
+
+        if (ex) {
+          const sent = ex.deliveries.reduce((a, d) => a + d.quantity, 0);
+          if (reqQty < sent) {
+            throw new UserError(`"${ex.service.name}": la cantidad requerida (${reqQty}) no puede ser menor a lo ya enviado al taller (${sent}).`);
+          }
+          // Per-size: delivered per size must still fit the new sizes
+          const sentBySize = new Map<string, number>();
+          for (const d of ex.deliveries) if (d.size) sentBySize.set(d.size, (sentBySize.get(d.size) ?? 0) + d.quantity);
+          const reqBySize = s.sizeSplit && s.sizeSplit.length > 0 ? new Map(s.sizeSplit.map((x) => [x.size, x.quantity])) : newSizeMap;
+          for (const [size, q] of sentBySize) {
+            const r = reqBySize.get(size) ?? 0;
+            if (q > r) {
+              throw new UserError(`"${ex.service.name}", talla ${size}: ya se enviaron ${q} u al taller; la nueva cantidad (${r}) no puede ser menor.`);
+            }
+          }
+          await tx.orderService.update({
+            where: { id: ex.id },
+            data: {
+              requiredQuantity: reqQty,
+              notes: s.notes,
+              // Preserve the assigned provider unless a new one is explicitly sent
+              provider_id: s.provider_id !== undefined && s.provider_id !== null ? s.provider_id : ex.provider_id,
+            },
+          });
+          if (s.sizeSplit && s.sizeSplit.length > 0) {
+            await tx.orderServiceSize.deleteMany({ where: { orderService_id: ex.id } });
+            await tx.orderServiceSize.createMany({
+              data: s.sizeSplit.filter((sz) => sz.quantity > 0).map((sz) => ({ orderService_id: ex.id, size: sz.size, quantity: sz.quantity })),
+            });
+          }
+        } else {
           const orderSvc = await tx.orderService.create({
             data: {
               order_id: orderId,
@@ -262,16 +328,9 @@ export async function updateOrder(
               provider_id: s.provider_id ?? null,
             },
           });
-
           if (s.sizeSplit && s.sizeSplit.length > 0) {
             await tx.orderServiceSize.createMany({
-              data: s.sizeSplit
-                .filter((sz) => sz.quantity > 0)
-                .map((sz) => ({
-                  orderService_id: orderSvc.id,
-                  size: sz.size,
-                  quantity: sz.quantity,
-                })),
+              data: s.sizeSplit.filter((sz) => sz.quantity > 0).map((sz) => ({ orderService_id: orderSvc.id, size: sz.size, quantity: sz.quantity })),
             });
           }
         }
@@ -283,7 +342,7 @@ export async function updateOrder(
     return { success: true };
   } catch (error: any) {
     console.error("Error updating order:", error);
-    return { error: error.message || "Error al actualizar el pedido." };
+    return { error: friendlyError(error, "Error al actualizar la OP.") };
   }
 }
 
@@ -293,6 +352,7 @@ export async function adjustOrderServiceQty(
   newQty: number
 ) {
   try {
+    await assertOrderServiceAccess(orderServiceId, orderId);
     const svc = await prisma.orderService.findUnique({
       where: { id: orderServiceId },
       include: { service: { select: { name: true } }, deliveries: { select: { quantity: true } } },
@@ -317,12 +377,13 @@ export async function adjustOrderServiceQty(
     revalidatePath(`/admin/orders/${orderId}`);
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || "Error al reajustar." };
+    return { error: friendlyError(e, "Error al reajustar.") };
   }
 }
 
 export async function ensureDefaultOrderServices(orderId: number) {
   try {
+    await assertOrderAccess(orderId);
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       select: { totalQuantity: true, status: true },
@@ -340,7 +401,7 @@ export async function ensureDefaultOrderServices(orderId: number) {
     revalidatePath("/admin/providers/ops");
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || "Error al asignar servicios." };
+    return { error: friendlyError(e, "Error al asignar servicios.") };
   }
 }
 
@@ -350,6 +411,7 @@ export async function addOrderService(
   requiredQuantity: number
 ) {
   try {
+    await assertOrderAccess(orderId);
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       select: { totalQuantity: true, status: true },
@@ -379,12 +441,13 @@ export async function addOrderService(
     revalidatePath("/admin/providers/ops");
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || "Error al agregar servicio." };
+    return { error: friendlyError(e, "Error al agregar servicio.") };
   }
 }
 
 export async function removeOrderService(orderServiceId: number, orderId: number) {
   try {
+    await assertOrderServiceAccess(orderServiceId, orderId);
     const svc = await prisma.orderService.findUnique({
       where: { id: orderServiceId },
       include: {
@@ -404,6 +467,6 @@ export async function removeOrderService(orderServiceId: number, orderId: number
     revalidatePath("/admin/providers/ops");
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || "Error al quitar servicio." };
+    return { error: friendlyError(e, "Error al quitar servicio.") };
   }
 }

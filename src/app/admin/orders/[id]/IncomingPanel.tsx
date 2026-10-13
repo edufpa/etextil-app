@@ -80,7 +80,8 @@ export default function IncomingPanel({ orderId, serviceDeliveries }: Props) {
 
   const handleDelete = async (id: number) => {
     if (!confirm("¿Eliminar este ingreso?")) return;
-    await deleteProviderIncoming(id, orderId);
+    const res = await deleteProviderIncoming(id, orderId);
+    if (res?.error) { setError(res.error); return; }
     router.refresh();
   };
 

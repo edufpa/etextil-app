@@ -13,3 +13,10 @@ export async function companyFilter(): Promise<{ company_id?: number }> {
   if (id === null) return {};
   return { company_id: id };
 }
+
+/** True if the session can access a record belonging to `recordCompanyId` (global admin sees all). */
+export async function canAccessCompany(recordCompanyId: number | null | undefined): Promise<boolean> {
+  const id = await getSessionCompanyId();
+  if (id === null) return true;
+  return recordCompanyId === id;
+}

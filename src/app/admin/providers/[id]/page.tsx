@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import ProviderForm from "../ProviderForm";
 import { notFound } from "next/navigation";
@@ -18,7 +19,7 @@ export default async function EditProviderPage({ params }: { params: Params }) {
     prisma.service.findMany({ where: { status: true }, orderBy: { name: "asc" } }),
   ]);
 
-  if (!provider) return notFound();
+  if (!provider || !(await canAccessCompany(provider.company_id))) return notFound();
 
   const selectedServiceIds = provider.services.map((ps) => ps.service_id);
 

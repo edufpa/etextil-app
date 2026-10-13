@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import OrderEditForm from "./OrderEditForm";
@@ -22,7 +23,7 @@ export default async function EditOrderPage({ params }: { params: Params }) {
     prisma.color.findMany({ where: { status: true }, orderBy: { name: "asc" } }),
   ]);
 
-  if (!order) return notFound();
+  if (!order || !(await canAccessCompany(order.company_id))) return notFound();
 
   return (
     <div>

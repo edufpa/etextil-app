@@ -12,8 +12,9 @@ export default function DeleteDeliveryButton({ id, orderId }: { id: number; orde
   const handleDelete = async () => {
     if (!confirm("¿Eliminar este registro de entrega?")) return;
     setLoading(true);
-    await deleteProviderDelivery(id, orderId);
+    const res = await deleteProviderDelivery(id, orderId);
     setLoading(false);
+    if (res?.error) { alert(res.error); return; }
     router.refresh();
   };
 

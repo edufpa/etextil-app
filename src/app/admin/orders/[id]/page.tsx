@@ -1,3 +1,4 @@
+import { companyFilter } from "@/lib/company";
 import { getOrderSummary } from "@/app/actions/orders";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
@@ -17,10 +18,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const orderId = parseInt(resolvedParams.id, 10);
   if (isNaN(orderId)) return notFound();
 
+  const filter = await companyFilter();
   const [order, providers, catalogServices] = await Promise.all([
     getOrderSummary(orderId),
     prisma.provider.findMany({
-      where: { status: true },
+      where: { status: true, ...filter },
       orderBy: { businessName: "asc" },
       include: { services: { select: { service_id: true } } },
     }),

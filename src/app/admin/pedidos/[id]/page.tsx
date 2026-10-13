@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -51,7 +52,7 @@ export default async function PedidoDetailPage({ params }: { params: Params }) {
     },
   });
 
-  if (!pedido) notFound();
+  if (!pedido || !(await canAccessCompany(pedido.company_id))) notFound();
 
   const totalUnits = pedido.items.reduce(
     (acc, item) => acc + item.sizes.reduce((s, sz) => s + sz.quantity, 0),

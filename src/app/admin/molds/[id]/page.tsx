@@ -1,3 +1,4 @@
+import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -10,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function EditMoldPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const mold = await prisma.mold.findUnique({ where: { id: Number(id) } });
-  if (!mold) return notFound();
+  if (!mold || !(await canAccessCompany(mold.company_id))) return notFound();
 
   return (
     <div>

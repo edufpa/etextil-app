@@ -3,6 +3,9 @@
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/logger";
+import { getSessionCompanyId } from "@/lib/company";
+import { friendlyError } from "@/lib/errors";
+import { assertIncomingAccess, createIncomingTx, TX_OPTS } from "@/lib/workshop-guard";
 
 export async function createProviderIncoming(data: {
   providerDelivery_id: number;
@@ -12,48 +15,43 @@ export async function createProviderIncoming(data: {
   notes?: string;
 }) {
   try {
-    if (data.quantity <= 0) return { error: "La cantidad debe ser mayor a 0." };
-
-    const delivery = await prisma.providerDelivery.findUnique({
-      where: { id: data.providerDelivery_id },
-      include: { incomings: { select: { quantity: true } } },
-    });
-
-    if (!delivery) return { error: "OP no encontrada." };
-
-    const alreadyIncoming = delivery.incomings.reduce((s, i) => s + i.quantity, 0);
-    const remaining = delivery.quantity - alreadyIncoming;
-
-    if (data.quantity > remaining) {
-      return { error: `Máximo a recepcionar: ${remaining}` };
-    }
-
-    await prisma.providerIncoming.create({
-      data: {
-        providerDelivery_id: data.providerDelivery_id,
-        quantity: data.quantity,
-        date: data.date,
-        notes: data.notes,
-      },
-    });
-
-    revalidatePath(`/admin/orders/${data.orderId}`);
+    const companyId = await getSessionCompanyId();
+    const delivery = await prisma.$transaction(
+      (tx) => createIncomingTx(tx, companyId, { providerDelivery_id: data.providerDelivery_id, quantity: data.quantity, date: data.date, notes: data.notes }),
+      TX_OPTS
+    );
+    const orderId = delivery.orderService.order.id;
+    revalidatePath(`/admin/orders/${orderId}`);
     revalidatePath(`/admin/providers`);
     revalidatePath(`/admin/providers/ops`);
-    await logActivity("REGISTER_INGRESO", `Ingreso OP #${data.providerDelivery_id}: ${data.quantity} u. — Pedido #${data.orderId}`);
+    revalidatePath(`/admin/taller`);
+    await logActivity(
+      "REGISTER_INGRESO",
+      `Ingreso OP ${delivery.orderService.order.orderNumber} · ${delivery.orderService.service.name}${delivery.size ? ` · ${delivery.size}` : ""}: ${data.quantity} u.`
+    );
     return { success: true };
-  } catch (e: any) {
-    return { error: e.message || "Error al registrar el ingreso." };
+  } catch (e) {
+    console.error(e);
+    return { error: friendlyError(e, "Error al registrar el ingreso.") };
   }
 }
 
 export async function deleteProviderIncoming(id: number, orderId: number) {
   try {
-    await prisma.providerIncoming.delete({ where: { id } });
-    revalidatePath(`/admin/orders/${orderId}`);
+    const companyId = await getSessionCompanyId();
+    const inc = await prisma.$transaction(async (tx) => {
+      const i = await assertIncomingAccess(tx, id, companyId);
+      await tx.providerIncoming.delete({ where: { id } });
+      return i;
+    });
+    const oid = inc.providerDelivery.orderService.order.id;
+    revalidatePath(`/admin/orders/${oid}`);
     revalidatePath(`/admin/providers/ops`);
+    revalidatePath(`/admin/taller`);
+    await logActivity("DELETE_INGRESO", `Ingreso #${id} eliminado (${inc.quantity} u, OP #${oid})`);
     return { success: true };
-  } catch {
-    return { error: "Error al eliminar el ingreso." };
+  } catch (e) {
+    console.error(e);
+    return { error: friendlyError(e, "Error al eliminar el ingreso.") };
   }
 }

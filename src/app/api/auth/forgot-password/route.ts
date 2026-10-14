@@ -3,7 +3,12 @@ import { prisma } from "@/lib/prisma";
 import { randomBytes } from "crypto";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/** Se crea al usarse (no al cargar el módulo) para que el build no dependa de RESEND_API_KEY. */
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY no está configurada");
+  return new Resend(key);
+}
 
 export async function POST(request: Request) {
   try {
@@ -31,7 +36,7 @@ export async function POST(request: Request) {
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
     const resetUrl = `${baseUrl}/reset-password?token=${token}`;
 
-    await resend.emails.send({
+    await getResend().emails.send({
       from: "SIAT eTextil <noreply@idakoos.com>",
       to: email,
       subject: "Recuperación de contraseña — SIAT eTextil",

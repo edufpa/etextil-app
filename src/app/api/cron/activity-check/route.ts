@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import { prisma } from "@/lib/prisma";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/** Se crea al usarse (no al cargar el módulo) para que el build no dependa de RESEND_API_KEY. */
+function getResend() {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) throw new Error("RESEND_API_KEY no está configurada");
+  return new Resend(key);
+}
 
 /** Returns the previous business day (Mon–Fri) relative to a given date */
 function getPreviousBusinessDay(from: Date): Date {
@@ -71,7 +76,7 @@ export async function GET(req: NextRequest) {
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://etextil-app.vercel.app";
 
-  await resend.emails.send({
+  await getResend().emails.send({
     from: process.env.ALERT_EMAIL_FROM ?? "Etextil <onboarding@resend.dev>",
     to,
     subject: `⚠️ Sin actividad el ${dayLabel} — Etextil`,

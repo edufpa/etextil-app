@@ -94,7 +94,7 @@ export async function createOrder(data: {
           if (data.services.length === 0) {
             await attachDefaultServicesToOrder(tx, order.id, data.totalQuantity, { createMissing: true });
           } else {
-            for (const s of data.services) {
+            for (const [stageIdx, s] of data.services.entries()) {
               // For trackBySize services, calculate requiredQuantity from sizeSplit sum
               const reqQty =
                 s.sizeSplit && s.sizeSplit.length > 0
@@ -107,6 +107,7 @@ export async function createOrder(data: {
                   service_id: s.service_id,
                   requiredQuantity: reqQty,
                   notes: s.notes,
+                  sequence: stageIdx + 1,
                 },
               });
 
@@ -280,6 +281,7 @@ export async function updateOrder(
       }
 
       const newSizeMap = new Map(data.sizes.map((s) => [s.size, s.quantity]));
+      let nextSequence = Math.max(0, ...existingServices.map((e) => e.sequence)) + 1;
 
       for (const s of data.services) {
         const reqQty =
@@ -326,6 +328,7 @@ export async function updateOrder(
               requiredQuantity: reqQty,
               notes: s.notes,
               provider_id: s.provider_id ?? null,
+              sequence: nextSequence++,
             },
           });
           if (s.sizeSplit && s.sizeSplit.length > 0) {
@@ -432,8 +435,9 @@ export async function addOrderService(
     const qty = requiredQuantity > 0 ? requiredQuantity : order.totalQuantity;
     if (qty < 1) return { error: "La cantidad debe ser al menos 1." };
 
+    const last = await prisma.orderService.aggregate({ where: { order_id: orderId }, _max: { sequence: true } });
     await prisma.orderService.create({
-      data: { order_id: orderId, service_id: serviceId, requiredQuantity: qty },
+      data: { order_id: orderId, service_id: serviceId, requiredQuantity: qty, sequence: (last._max.sequence ?? 0) + 1 },
     });
 
     await logActivity("ADD_ORDER_SERVICE", `Servicio "${service.name}" agregado a OP #${orderId} (${qty} u.)`);

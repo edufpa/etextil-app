@@ -2,10 +2,36 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "@/lib/company";
 
 function parseServiceIds(formData: FormData): number[] {
   return formData.getAll("service_ids[]").map(Number).filter((n) => !isNaN(n) && n > 0);
+}
+
+/** Lee `price_<serviceId>` del formulario (vacío = sin tarifa). Devuelve null si algún valor es inválido. */
+function parsePrices(formData: FormData, serviceIds: number[]): Map<number, number> | null {
+  const prices = new Map<number, number>();
+  for (const id of serviceIds) {
+    const raw = String(formData.get(`price_${id}`) ?? "").trim().replace(",", ".");
+    if (raw === "") continue;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) return null;
+    prices.set(id, Math.round(n * 100) / 100);
+  }
+  return prices;
+}
+
+/** Reemplaza las tarifas del taller: solo quedan las de servicios marcados que tengan precio. */
+async function savePrices(tx: Prisma.TransactionClient, providerId: number, prices: Map<number, number>) {
+  await tx.providerServicePrice.deleteMany({ where: { provider_id: providerId, service_id: { notIn: [...prices.keys()] } } });
+  for (const [service_id, price] of prices) {
+    await tx.providerServicePrice.upsert({
+      where: { provider_id_service_id: { provider_id: providerId, service_id } },
+      create: { provider_id: providerId, service_id, price },
+      update: { price },
+    });
+  }
 }
 
 export async function createProvider(formData: FormData) {
@@ -14,6 +40,8 @@ export async function createProvider(formData: FormData) {
     if (!businessName) return { error: "Nombre o Razón social es obligatorio" };
     const companyId = await getSessionCompanyId();
     const serviceIds = parseServiceIds(formData);
+    const prices = parsePrices(formData, serviceIds);
+    if (!prices) return { error: "Las tarifas deben ser números mayores o iguales a 0." };
 
     const provider = await prisma.provider.create({
       data: {
@@ -33,6 +61,7 @@ export async function createProvider(formData: FormData) {
         data: serviceIds.map((service_id) => ({ provider_id: provider.id, service_id })),
         skipDuplicates: true,
       });
+      await prisma.$transaction((tx) => savePrices(tx, provider.id, prices));
     }
 
     revalidatePath("/admin/providers");
@@ -47,6 +76,8 @@ export async function updateProvider(id: number, formData: FormData) {
     const businessName = formData.get("businessName") as string;
     if (!businessName) return { error: "Nombre o Razón social es obligatorio" };
     const serviceIds = parseServiceIds(formData);
+    const prices = parsePrices(formData, serviceIds);
+    if (!prices) return { error: "Las tarifas deben ser números mayores o iguales a 0." };
 
     await prisma.$transaction(async (tx) => {
       await tx.provider.update({
@@ -70,6 +101,7 @@ export async function updateProvider(id: number, formData: FormData) {
           skipDuplicates: true,
         });
       }
+      await savePrices(tx, id, prices);
     });
 
     revalidatePath("/admin/providers");

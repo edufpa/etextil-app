@@ -13,10 +13,13 @@ export default function ProviderForm({
   provider,
   allServices = [],
   selectedServiceIds = [],
+  initialPrices = {},
 }: {
   provider?: any;
   allServices?: ServiceOption[];
   selectedServiceIds?: number[];
+  /** Tarifa por prenda (S/) por id de servicio. */
+  initialPrices?: Record<number, number>;
 }) {
   const isEditing = !!provider;
   const router = useRouter();
@@ -24,6 +27,10 @@ export default function ProviderForm({
   const [loading, setLoading] = useState(false);
   const [checkedServices, setCheckedServices] = useState<Set<number>>(
     new Set(selectedServiceIds)
+  );
+
+  const [prices, setPrices] = useState<Record<number, string>>(
+    Object.fromEntries(Object.entries(initialPrices).map(([k, v]) => [k, String(v)]))
   );
 
   const toggleService = (id: number) => {
@@ -42,7 +49,10 @@ export default function ProviderForm({
 
     const formData = new FormData(e.currentTarget);
     // Append selected service IDs
-    checkedServices.forEach((id) => formData.append("service_ids[]", String(id)));
+    checkedServices.forEach((id) => {
+      formData.append("service_ids[]", String(id));
+      formData.set(`price_${id}`, prices[id] ?? "");
+    });
 
     let res;
     if (isEditing) {
@@ -159,6 +169,20 @@ export default function ProviderForm({
                   }}>
                     {serviceTypeLabel[svc.type] || svc.type}
                   </span>
+                  {checkedServices.has(svc.id) && (
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="S/ x prenda"
+                      aria-label={`Tarifa por prenda de ${svc.name}`}
+                      value={prices[svc.id] ?? ""}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => setPrices((p) => ({ ...p, [svc.id]: e.target.value }))}
+                      style={{ width: "92px", padding: "2px 6px", fontSize: "0.8rem" }}
+                    />
+                  )}
                 </label>
               ))}
             </div>
@@ -167,6 +191,9 @@ export default function ProviderForm({
                 Sin servicios asignados — el taller no aparecerá en los filtros de pedidos.
               </div>
             )}
+            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.35rem" }}>
+              La tarifa es el precio por prenda en soles. Se copia a cada orden de servicio al emitirla; cambiarla aquí no altera las ya emitidas.
+            </div>
           </div>
         )}
 

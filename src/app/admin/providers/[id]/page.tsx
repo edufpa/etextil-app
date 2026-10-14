@@ -14,7 +14,7 @@ export default async function EditProviderPage({ params }: { params: Params }) {
   const [provider, allServices] = await Promise.all([
     prisma.provider.findUnique({
       where: { id },
-      include: { services: { select: { service_id: true } } },
+      include: { services: { select: { service_id: true } }, prices: { select: { service_id: true, price: true } } },
     }),
     prisma.service.findMany({ where: { status: true }, orderBy: { name: "asc" } }),
   ]);
@@ -22,6 +22,7 @@ export default async function EditProviderPage({ params }: { params: Params }) {
   if (!provider || !(await canAccessCompany(provider.company_id))) return notFound();
 
   const selectedServiceIds = provider.services.map((ps) => ps.service_id);
+  const initialPrices = Object.fromEntries(provider.prices.map((p) => [p.service_id, Number(p.price)]));
 
   return (
     <div>
@@ -29,6 +30,7 @@ export default async function EditProviderPage({ params }: { params: Params }) {
         provider={provider}
         allServices={allServices}
         selectedServiceIds={selectedServiceIds}
+        initialPrices={initialPrices}
       />
     </div>
   );

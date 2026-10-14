@@ -11,6 +11,8 @@ import ProviderDeliveryForm from "./ProviderDeliveryForm";
 import DeleteDeliveryButton from "./DeleteDeliveryButton";
 import IncomingPanel from "./IncomingPanel";
 import OrderServicesPanel from "./OrderServicesPanel";
+import ServiceOrdersPanel, { type ServiceOrderRow } from "./ServiceOrdersPanel";
+import { computeAvailability, previousStage, osStatus } from "@/lib/service-orders";
 
 export const dynamic = 'force-dynamic';
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -19,24 +21,36 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   if (isNaN(orderId)) return notFound();
 
   const filter = await companyFilter();
-  const [order, providers, catalogServices] = await Promise.all([
+  const [order, providers, catalogServices, serviceOrders] = await Promise.all([
     getOrderSummary(orderId),
     prisma.provider.findMany({
       where: { status: true, ...filter },
       orderBy: { businessName: "asc" },
-      include: { services: { select: { service_id: true } } },
+      include: { services: { select: { service_id: true } }, prices: { select: { service_id: true, price: true } } },
     }),
     prisma.service.findMany({
       where: { status: true },
       orderBy: { name: "asc" },
       select: { id: true, name: true, type: true },
     }),
+    prisma.serviceOrder.findMany({
+      where: { orderService: { order_id: orderId }, ...filter },
+      orderBy: { id: "desc" },
+      include: {
+        provider: { select: { businessName: true } },
+        orderService: { select: { service: { select: { name: true } } } },
+        lines: { select: { size: true, quantity: true, unitPrice: true, incomings: { select: { quantity: true } } }, orderBy: { id: "asc" } },
+      },
+    }),
   ]);
 
   if (!order) return notFound();
 
   // Build data for the ProviderDeliveryForm
+  const orderSizesForAvail = (order.sizes ?? []).map((s: any) => ({ size: s.size, quantity: s.quantity }));
   const orderServicesForForm = order.services.map((svc: any) => {
+    const prev: any = previousStage(order.services as any[], svc);
+    const avail = computeAvailability(svc, orderSizesForAvail, prev);
     const deliveredBySize: Record<string, number> = {};
     for (const d of svc.deliveries) {
       if (d.size) deliveredBySize[d.size] = (deliveredBySize[d.size] || 0) + d.quantity;
@@ -49,6 +63,26 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       alreadyDelivered: svc.deliveries.reduce((a: number, d: any) => a + d.quantity, 0),
       deliveredBySize,
       provider: svc.provider ?? null,
+      available: { total: avail.total, bySize: avail.bySize, gated: avail.gated, prevName: prev?.service?.name ?? null },
+    };
+  });
+
+  const serviceOrderRows: ServiceOrderRow[] = serviceOrders.map((so: any) => {
+    const sent = so.lines.reduce((a: number, l: any) => a + l.quantity, 0);
+    const lineRecv = (l: any) => l.incomings.reduce((a: number, i: any) => a + i.quantity, 0);
+    return {
+      id: so.id,
+      osNumber: so.osNumber,
+      serviceName: so.orderService.service.name,
+      providerName: so.provider.businessName,
+      date: so.date.toISOString(),
+      dueDate: so.dueDate ? so.dueDate.toISOString() : null,
+      status: osStatus(so, so.lines),
+      sent,
+      received: so.lines.reduce((a: number, l: any) => a + lineRecv(l), 0),
+      unitPrice: so.lines.find((l: any) => l.unitPrice !== null)?.unitPrice != null ? Number(so.lines.find((l: any) => l.unitPrice !== null).unitPrice) : null,
+      voidNote: so.voidNote,
+      lines: so.lines.map((l: any) => ({ size: l.size ?? "", quantity: l.quantity, received: lineRecv(l) })),
     };
   });
 
@@ -69,6 +103,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     id: p.id,
     businessName: p.businessName,
     serviceIds: p.services.map((ps: any) => ps.service_id),
+    prices: Object.fromEntries(p.prices.map((pr: any) => [pr.service_id, Number(pr.price)])) as Record<number, number>,
   }));
 
   // Build IncomingPanel data: group deliveries (OPs) by service
@@ -183,11 +218,21 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             />
           </div>
 
-          {/* OPs y recepciones del taller */}
+          {/* Órdenes de Servicio emitidas a talleres */}
+          {serviceOrderRows.length > 0 && (
+            <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
+              <h3 style={{ marginBottom: "1rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>
+                Órdenes de Servicio (talleres)
+              </h3>
+              <ServiceOrdersPanel rows={serviceOrderRows} />
+            </div>
+          )}
+
+          {/* Salidas y recepciones del taller */}
           {serviceDeliveriesForIncoming.some((s: any) => s.deliveries.length > 0) && (
             <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
               <h3 style={{ marginBottom: "1rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>
-                Órdenes de Producción e Ingresos
+                Salidas e Ingresos
               </h3>
               <IncomingPanel orderId={order.id} serviceDeliveries={serviceDeliveriesForIncoming} />
             </div>

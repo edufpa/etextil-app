@@ -1,6 +1,6 @@
 "use client";
 
-import { createProviderDeliveryBatch } from "@/app/actions/providerDeliveries";
+import { createServiceOrder } from "@/app/actions/serviceOrders";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Truck, FileText, Printer, X } from "lucide-react";
@@ -13,12 +13,16 @@ type OrderServiceRow = {
   alreadyDelivered: number;
   deliveredBySize: Record<string, number>;
   provider?: { id: number; businessName: string } | null;
+  /** Cuánto se puede enviar todavía (ya descuenta lo enviado y, si hay secuencia, lo recibido de la etapa anterior). */
+  available: { total: number; bySize: Record<string, number>; gated: boolean; prevName: string | null };
 };
 
 type ProviderRow = {
   id: number;
   businessName: string;
   serviceIds: number[];
+  /** Tarifa por prenda (S/) por id de servicio. */
+  prices: Record<number, number>;
 };
 
 type OrderInfo = {
@@ -52,17 +56,22 @@ export default function ProviderDeliveryForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const firstSvc = orderServices[0];
+  const firstSvc = orderServices.find((s) => s.available.total > 0) ?? orderServices[0];
   const [orderServiceId, setOrderServiceId] = useState(firstSvc?.id || 0);
   const [providerId, setProviderId] = useState<number>(firstSvc?.provider?.id || 0);
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
   const [notes, setNotes] = useState("");
+  const [dueDate, setDueDate] = useState("");
+  const [price, setPrice] = useState("");
 
   // Size breakdown entries for the selected service
   const [sizeEntries, setSizeEntries] = useState<SizeEntry[]>([]);
 
   // OP modal after successful registration
   const [opData, setOpData] = useState<{
+    osNumber: string;
+    price: number | null;
+    dueDate: string;
     providerName: string;
     serviceName: string;
     date: string;
@@ -76,7 +85,7 @@ export default function ProviderDeliveryForm({
     if (!svc) return [];
     return orderSizes.map((sz) => {
       const delivered = svc.deliveredBySize[sz.size] || 0;
-      const remaining = Math.max(0, sz.quantity - delivered);
+      const remaining = Math.max(0, svc.available.bySize[sz.size] ?? 0);
       return {
         size: sz.size,
         ordered: sz.quantity,
@@ -116,30 +125,48 @@ export default function ProviderDeliveryForm({
   );
 
   const selectedProvider = providers.find((p) => p.id === providerId);
+  const tariff = selectedProvider && selectedService ? selectedProvider.prices[selectedService.serviceId] : undefined;
+
+  // La tarifa del taller para este servicio es el precio por defecto (editable)
+  useEffect(() => {
+    setPrice(tariff !== undefined ? String(tariff) : "");
+  }, [tariff, providerId, orderServiceId]);
+
+  const priceNum = price.trim() === "" ? null : Number(price.replace(",", "."));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (providerId === 0) { setError("Selecciona un proveedor."); return; }
     if (totalToSend === 0) { setError("Ingresa al menos una cantidad mayor a 0."); return; }
 
+    if (priceNum !== null && (!Number.isFinite(priceNum) || priceNum < 0)) {
+      setError("El precio debe ser un número mayor o igual a 0.");
+      return;
+    }
+
     setLoading(true);
     setError("");
 
-    const res = await createProviderDeliveryBatch({
+    const res = await createServiceOrder({
       orderService_id: orderServiceId,
       provider_id: providerId,
       date: new Date(date + "T12:00:00"),
+      dueDate: dueDate ? new Date(dueDate + "T12:00:00") : null,
       notes,
+      unitPrice: priceNum,
       sizes: sizeEntries.map((e) => ({ size: e.size, quantity: e.toSend })),
     });
 
     setLoading(false);
 
-    if (res.error) {
+    if (!res.success) {
       setError(res.error);
     } else {
       // Show OP modal before refreshing
       setOpData({
+        osNumber: res.osNumber,
+        price: res.unitPrice,
+        dueDate,
         providerName: selectedProvider?.businessName || "—",
         serviceName: selectedService?.service.name || "—",
         date,
@@ -179,13 +206,17 @@ export default function ProviderDeliveryForm({
             {/* OP Header */}
             <div style={{ textAlign: "center", marginBottom: "1.5rem", borderBottom: "2px solid #333", paddingBottom: "1rem" }}>
               <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                Orden de Producción
+                Orden de Servicio
               </div>
               <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#111", marginTop: "0.25rem" }}>
-                {orderInfo.orderNumber}
+                {opData.osNumber}
+              </div>
+              <div style={{ fontSize: "0.85rem", color: "#333", marginTop: "0.15rem", fontWeight: 600 }}>
+                OP {orderInfo.orderNumber}
               </div>
               <div style={{ fontSize: "0.8rem", color: "#555", marginTop: "0.25rem" }}>
                 Emitida: {new Date(opData.date + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })}
+                {opData.dueDate && ` · Entrega: ${new Date(opData.dueDate + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })}`}
               </div>
             </div>
 
@@ -222,6 +253,20 @@ export default function ProviderDeliveryForm({
                     {opData.sizes.reduce((s, e) => s + e.toSend, 0)}
                   </td>
                 </tr>
+                {opData.price !== null && (
+                  <>
+                    <tr>
+                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", fontWeight: 600 }}>Precio por prenda</td>
+                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", textAlign: "center" }}>S/ {opData.price.toFixed(2)}</td>
+                    </tr>
+                    <tr style={{ background: "#f8f8f8" }}>
+                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", fontWeight: 700 }}>TOTAL A PAGAR</td>
+                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", textAlign: "center", fontWeight: 900 }}>
+                        S/ {(opData.price * opData.sizes.reduce((s, e) => s + e.toSend, 0)).toFixed(2)}
+                      </td>
+                    </tr>
+                  </>
+                )}
               </tbody>
             </table>
 
@@ -243,7 +288,7 @@ export default function ProviderDeliveryForm({
                 onClick={() => window.print()}
                 style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", background: "#111", color: "white", border: "none", padding: "0.7rem", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 600 }}
               >
-                <Printer size={16} /> Imprimir OP
+                <Printer size={16} /> Imprimir OS
               </button>
               <button
                 onClick={closeOP}
@@ -267,7 +312,7 @@ export default function ProviderDeliveryForm({
             cursor: "pointer", fontWeight: 600, width: "100%", justifyContent: "center", marginTop: "1rem",
           }}
         >
-          <FileText size={18} /> Registrar entrega / Generar OP
+          <FileText size={18} /> Emitir orden de servicio (OS)
         </button>
       ) : (
         <form
@@ -275,7 +320,7 @@ export default function ProviderDeliveryForm({
           style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.85rem", background: "var(--bg-color)", padding: "1.25rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}
         >
           <strong style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--primary)", fontSize: "0.95rem" }}>
-            <Truck size={16} /> Nueva Entrega / Orden de Producción
+            <Truck size={16} /> Nueva Orden de Servicio (OS)
           </strong>
 
           {error && (
@@ -287,10 +332,10 @@ export default function ProviderDeliveryForm({
             <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)" }}>Servicio</label>
             <select value={orderServiceId} onChange={(e) => handleServiceChange(Number(e.target.value))}>
               {orderServices.map((s) => {
-                const rem = s.requiredQuantity - s.alreadyDelivered;
+                const rem = s.available.total;
                 return (
                   <option key={s.id} value={s.id} disabled={rem <= 0}>
-                    {s.service.name} — Saldo: {rem}
+                    {s.service.name} — Disponible: {rem}{s.available.gated ? ` (según ${s.available.prevName ?? "etapa anterior"})` : ""}
                   </option>
                 );
               })}
@@ -329,6 +374,17 @@ export default function ProviderDeliveryForm({
               <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+              <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)" }}>Fecha de entrega (opcional)</label>
+              <input type="date" value={dueDate} min={date} onChange={(e) => setDueDate(e.target.value)} />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+              <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)" }}>
+                Precio por prenda (S/)
+                {tariff !== undefined && <span style={{ fontWeight: 400, color: "green", marginLeft: "0.4rem" }}>tarifa del taller</span>}
+              </label>
+              <input type="number" min={0} step="0.01" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Sin tarifa" />
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
               <label style={{ fontSize: "0.8rem", fontWeight: 600, color: "var(--text-muted)" }}>Notas (opcional)</label>
               <input type="text" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Ej: Lote 1..." />
             </div>
@@ -338,7 +394,7 @@ export default function ProviderDeliveryForm({
           {sizeEntries.length > 0 && (
             <div style={{ border: "1px solid var(--card-border)", borderRadius: "var(--radius)", overflow: "hidden" }}>
               <div style={{ padding: "0.5rem 0.75rem", background: "var(--primary)", color: "white", fontSize: "0.8rem", fontWeight: 700 }}>
-                Saldo por Talla — edita la cantidad a enviar
+                {selectedService?.available.gated ? `Disponible por talla (lo recibido de ${selectedService.available.prevName ?? "la etapa anterior"}) — edita la cantidad a enviar` : "Saldo por Talla — edita la cantidad a enviar"}
               </div>
               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                 <thead>
@@ -346,7 +402,7 @@ export default function ProviderDeliveryForm({
                     <th style={{ padding: "0.5rem 0.75rem", textAlign: "left", fontWeight: 600, color: "var(--text-muted)" }}>Talla</th>
                     <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 600, color: "var(--text-muted)" }}>Pedido</th>
                     <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 600, color: "var(--text-muted)" }}>Entregado</th>
-                    <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 600, color: "var(--text-muted)" }}>Saldo</th>
+                    <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 600, color: "var(--text-muted)" }}>Disponible</th>
                     <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", fontWeight: 700, color: "var(--primary)" }}>A enviar</th>
                   </tr>
                 </thead>
@@ -391,7 +447,7 @@ export default function ProviderDeliveryForm({
               style={{ flex: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", background: "var(--primary)", color: "white", border: "none", padding: "0.7rem", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 700 }}
             >
               <FileText size={16} />
-              {loading ? "Guardando..." : "Registrar y Generar OP"}
+              {loading ? "Emitiendo..." : "Emitir OS"}
             </button>
             <button
               type="button"

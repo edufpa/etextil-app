@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { getSessionCompanyId } from "./company";
 import { UserError } from "./errors";
+import { computeAvailability, previousStage, requiredBySizeMap } from "./service-orders";
 
 type Tx = Prisma.TransactionClient;
 
@@ -30,22 +31,44 @@ export async function loadOrderServiceForDelivery(tx: Tx, orderServiceId: number
   return os;
 }
 
+/** Etapa anterior de la OP (según `sequence`) con sus salidas e ingresos, o null si es la primera / sin secuencia. */
+export async function loadPreviousStage(tx: Tx, orderId: number, current: { id: number; sequence: number }) {
+  if (!current.sequence) return null;
+  const stages = await tx.orderService.findMany({
+    where: { order_id: orderId },
+    select: {
+      id: true,
+      sequence: true,
+      service: { select: { name: true } },
+      deliveries: { select: { size: true, quantity: true, incomings: { select: { quantity: true } } } },
+    },
+  });
+  return previousStage(stages, current);
+}
+
 /** Required quantity per size for a service (sizeSplit if present, otherwise the OP sizes). */
 export function requiredBySize(os: { sizeSplit: { size: string; quantity: number }[]; order: { sizes: { size: string; quantity: number }[] } }) {
-  const src = os.sizeSplit.length > 0 ? os.sizeSplit : os.order.sizes;
-  const m = new Map<string, number>();
-  for (const s of src) m.set(s.size, (m.get(s.size) ?? 0) + s.quantity);
-  return m;
+  return requiredBySizeMap(os.sizeSplit, os.order.sizes);
 }
 
 /**
  * Validates and creates deliveries (salidas al taller) for one service. Must run inside a transaction.
  * sizes with size "" are treated as "sin talla" (only total cap).
+ * Secuencia: lo enviado a una etapa no puede superar lo ya recibido de la etapa anterior (se permiten parciales).
+ * Si se pasa `serviceOrder_id`, las salidas quedan como líneas de esa OS con `unitPrice` congelado.
  */
 export async function createDeliveriesTx(
   tx: Tx,
   sessionCompanyId: number | null,
-  data: { orderService_id: number; provider_id: number; date: Date; notes?: string; sizes: { size: string; quantity: number }[] }
+  data: {
+    orderService_id: number;
+    provider_id: number;
+    date: Date;
+    notes?: string;
+    sizes: { size: string; quantity: number }[];
+    serviceOrder_id?: number;
+    unitPrice?: number | null;
+  }
 ) {
   const os = await loadOrderServiceForDelivery(tx, data.orderService_id, sessionCompanyId);
   if (["ENTREGADO", "CERRADO", "CANCELADO"].includes(os.order.status)) {
@@ -60,24 +83,28 @@ export async function createDeliveriesTx(
   if (valid.some((s) => !Number.isInteger(s.quantity))) throw new UserError("Las cantidades deben ser números enteros.");
 
   const totalBatch = valid.reduce((a, s) => a + s.quantity, 0);
-  const already = os.deliveries.reduce((a, d) => a + d.quantity, 0);
-  const remaining = os.requiredQuantity - already;
-  if (totalBatch > remaining) {
-    throw new UserError(`${os.service.name}: el total (${totalBatch}) supera el saldo por enviar (${remaining}).`);
+  const prev = await loadPreviousStage(tx, os.order.id, os);
+  const avail = computeAvailability(os, os.order.sizes, prev);
+  if (totalBatch > avail.total) {
+    throw new UserError(
+      prev
+        ? `${os.service.name}: el total (${totalBatch}) supera lo ya recibido de ${prev.service.name} disponible para enviar (${avail.total}).`
+        : `${os.service.name}: el total (${totalBatch}) supera el saldo por enviar (${avail.total}).`
+    );
   }
 
-  const req = requiredBySize(os);
-  if (req.size > 0) {
-    const sentBySize = new Map<string, number>();
-    for (const d of os.deliveries) if (d.size) sentBySize.set(d.size, (sentBySize.get(d.size) ?? 0) + d.quantity);
+  if (Object.keys(avail.bySize).length > 0) {
     const batchBySize = new Map<string, number>();
     for (const s of valid) batchBySize.set(s.size, (batchBySize.get(s.size) ?? 0) + s.quantity);
     for (const [size, qty] of batchBySize) {
-      const r = req.get(size);
-      if (r === undefined) throw new UserError(`${os.service.name}: la talla "${size}" no pertenece a la OP ${os.order.orderNumber}.`);
-      const left = r - (sentBySize.get(size) ?? 0);
+      const left = avail.bySize[size];
+      if (left === undefined) throw new UserError(`${os.service.name}: la talla "${size}" no pertenece a la OP ${os.order.orderNumber}.`);
       if (qty > left) {
-        throw new UserError(`${os.service.name}, talla ${size}: se quiere enviar ${qty} pero el saldo es ${Math.max(0, left)}.`);
+        throw new UserError(
+          prev
+            ? `${os.service.name}, talla ${size}: se quiere enviar ${qty} pero solo hay ${left} recibido de ${prev.service.name} disponible.`
+            : `${os.service.name}, talla ${size}: se quiere enviar ${qty} pero el saldo es ${left}.`
+        );
       }
     }
   }
@@ -91,6 +118,8 @@ export async function createDeliveriesTx(
         date: data.date,
         quantity: s.quantity,
         notes: data.notes,
+        serviceOrder_id: data.serviceOrder_id ?? null,
+        unitPrice: data.unitPrice ?? null,
       },
     });
   }
@@ -137,6 +166,7 @@ export async function assertDeliveryAccess(tx: Tx, deliveryId: number, sessionCo
       orderService: {
         select: {
           id: true,
+          sequence: true,
           requiredQuantity: true,
           service: { select: { name: true } },
           sizeSplit: true,
@@ -159,6 +189,19 @@ export async function assertIncomingAccess(tx: Tx, incomingId: number, sessionCo
   if (!i) throw new UserError("El ingreso no existe.");
   checkCompany(sessionCompanyId, i.providerDelivery.orderService.order.company_id);
   return i;
+}
+
+export async function assertServiceOrderAccess(tx: Tx, serviceOrderId: number, sessionCompanyId: number | null) {
+  const so = await tx.serviceOrder.findUnique({
+    where: { id: serviceOrderId },
+    include: {
+      lines: { select: { size: true, quantity: true, incomings: { select: { quantity: true } } } },
+      orderService: { select: { order: { select: { id: true, orderNumber: true, company_id: true } } } },
+    },
+  });
+  if (!so) throw new UserError("La orden de servicio no existe.");
+  checkCompany(sessionCompanyId, so.orderService.order.company_id);
+  return so;
 }
 
 export const TX_OPTS = { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, timeout: 20000, maxWait: 10000 } as const;

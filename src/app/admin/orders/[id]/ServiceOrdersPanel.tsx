@@ -110,7 +110,7 @@ export default function ServiceOrdersPanel({ rows, op }: { rows: ServiceOrderRow
             {rows.map((r) => {
               const late = r.dueDate && r.status !== "COMPLETA" && r.status !== "ANULADA" && r.dueDate.slice(0, 10) < today;
               return (
-                <tr key={r.id} style={{ borderTop: "1px solid var(--card-border)", opacity: r.status === "ANULADA" ? 0.55 : 1 }}>
+                <tr key={r.id} id={`os-${r.id}`} style={{ borderTop: "1px solid var(--card-border)", opacity: r.status === "ANULADA" ? 0.55 : 1, scrollMarginTop: 80 }}>
                   <td style={{ padding: "0.5rem 0.4rem", fontWeight: 800 }}>{r.osNumber}</td>
                   <td style={{ padding: "0.5rem 0.4rem" }}>
                     <strong>{r.serviceName}</strong>

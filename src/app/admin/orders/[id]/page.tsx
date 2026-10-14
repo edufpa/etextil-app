@@ -2,7 +2,7 @@ import { companyFilter } from "@/lib/company";
 import { getOrderSummary } from "@/app/actions/orders";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { ArrowLeft, Pencil } from "lucide-react";
+import { Pencil, ClipboardList, Route, Send, Truck, Ruler, FileText, Info } from "lucide-react";
 import styles from "../../services/services.module.css";
 import { notFound } from "next/navigation";
 import CloseOrderButton from "./CloseOrderButton";
@@ -11,6 +11,7 @@ import ProviderDeliveryForm from "./ProviderDeliveryForm";
 import DeleteDeliveryButton from "./DeleteDeliveryButton";
 import IncomingPanel from "./IncomingPanel";
 import OrderServicesPanel from "./OrderServicesPanel";
+import { PageHeader, Card, Split, Stack, StatGrid, Stat, StatusPill, KV, EmptyState } from "@/components/ui";
 import ServiceOrdersPanel, { type ServiceOrderRow } from "./ServiceOrdersPanel";
 import { computeAvailability, previousStage, osStatus } from "@/lib/service-orders";
 
@@ -124,8 +125,25 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       receivedQty,
       providerName: svc.provider?.businessName ?? null,
       sizeSplit: svc.sizeSplit?.map((sz: any) => ({ size: sz.size, quantity: sz.quantity })) ?? [],
+      sequence: svc.sequence ?? 0,
+      available: (() => {
+        const a = orderServicesForForm.find((f: any) => f.id === svc.id)!.available;
+        return { total: a.total, gated: a.gated, prevName: a.prevName };
+      })(),
     };
   });
+
+  const pedidoRef = order.pedido_id
+    ? await prisma.pedido.findUnique({ where: { id: order.pedido_id }, select: { id: true, pedidoNumber: true } })
+    : null;
+
+  const activeOs = serviceOrderRows.filter((r) => r.status !== "ANULADA");
+  const openOs = activeOs.filter((r) => r.status === "EMITIDA" || r.status === "PARCIAL");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const lateOs = openOs.filter((r) => r.dueDate && r.dueDate.slice(0, 10) < todayIso).length;
+  const osValue = activeOs.reduce((a, r) => a + (r.unitPrice ?? 0) * r.sent, 0);
+  const canOperate = !["ENTREGADO", "CERRADO", "CANCELADO"].includes(order.status);
+  const displayStatus = order.status === "CERRADO" ? "ENTREGADO" : order.status;
 
   const osNumberById = new Map<number, string>(serviceOrders.map((so: any) => [so.id, so.osNumber]));
   const serviceDeliveriesForIncoming = order.services.map((svc: any) => ({
@@ -150,68 +168,40 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   return (
     <div>
-      <div className={styles.pageHeader}>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <Link href="/admin/orders" style={{ color: "var(--text-muted)" }}>
-            <ArrowLeft size={20} />
-          </Link>
-          <h1 className={styles.title}>Pedido: {order.orderNumber}</h1>
-        </div>
+      <PageHeader
+        icon={ClipboardList}
+        title={`OP ${order.orderNumber}`}
+        badge={<StatusPill status={displayStatus} />}
+        subtitle={`${order.client.name} · ${order.garment} ${order.color} · ${order.date.toLocaleDateString("es-PE")}`}
+        breadcrumbs={[
+          { label: "Producción" },
+          ...(pedidoRef ? [{ label: "Pedidos", href: "/admin/pedidos" }, { label: pedidoRef.pedidoNumber, href: `/admin/pedidos/${pedidoRef.id}` }] : [{ label: "Órdenes de Producción", href: "/admin/orders" }]),
+          { label: order.orderNumber },
+        ]}
+        actions={
+          <>
+            {canOperate && (
+              <Link href={`/admin/orders/${order.id}/edit`} className="btn btn-secondary">
+                <Pencil size={15} /> Editar
+              </Link>
+            )}
+            {canOperate && <CloseOrderButton id={order.id} />}
+            <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
+          </>
+        }
+      />
 
-        <div style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
-          <span className={styles.badge} style={{
-            fontSize: "1rem", padding: "0.5rem 1rem", color: 'white',
-            background: (order.status === 'ENTREGADO' || order.status === 'CERRADO') ? 'var(--success)' : order.status === 'CANCELADO' ? '#dc2626' : 'var(--primary)',
-          }}>
-            {order.status === 'CERRADO' ? 'ENTREGADO' : order.status}
-          </span>
-          {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
-            <Link href={`/admin/orders/${order.id}/edit`} className={styles.editBtn} style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.5rem 1rem", textDecoration: "none" }}>
-              <Pencil size={16} /> Editar
-            </Link>
-          )}
-          {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && (
-            <CloseOrderButton id={order.id} />
-          )}
-          <DeleteOrderButton orderId={order.id} orderNumber={order.orderNumber} />
-        </div>
-      </div>
+      <StatGrid>
+        <Stat label="Solicitado" value={order.totalQuantity.toLocaleString("es-PE")} tone="primary" hint="prendas de la OP" />
+        <Stat label="Despachado" value={order.totalDelivered.toLocaleString("es-PE")} tone="success" hint="en guías al cliente" />
+        <Stat label="Saldo por despachar" value={order.pending.toLocaleString("es-PE")} tone={order.pending > 0 ? "warning" : "neutral"} />
+        <Stat label="OS abiertas" value={openOs.length} tone="info" hint={lateOs > 0 ? `${lateOs} atrasada${lateOs > 1 ? "s" : ""}` : "en talleres"} />
+        <Stat label="Valor de OS" value={`S/ ${osValue.toLocaleString("es-PE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} tone="neutral" hint="según tarifas" />
+      </StatGrid>
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: "2rem", marginTop: "2rem" }}>
-        {/* PANEL IZQUIERDO */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-
-          {/* Datos Generales */}
-          <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Datos Generales</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem" }}>
-              <div><strong style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Cliente:</strong><br />{order.client.name}</div>
-              <div><strong style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Fecha:</strong><br />{order.date.toLocaleDateString()}</div>
-              <div><strong style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Prenda:</strong><br />{order.garment}</div>
-              <div><strong style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Color:</strong><br />{order.color}</div>
-              <div style={{ gridColumn: "span 2" }}><strong style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>Observaciones:</strong><br />{order.notes || "—"}</div>
-            </div>
-          </div>
-
-          {/* Tallas */}
-          <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Desglose de Tallas</h3>
-            <table className={styles.table}>
-              <thead><tr><th>Talla</th><th>Cantidad</th></tr></thead>
-              <tbody>
-                {order.sizes.map((s: any) => (
-                  <tr key={s.id}>
-                    <td><strong>{s.size}</strong></td>
-                    <td>{s.quantity}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Servicios + Avance de Producción */}
-          <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Servicios y Avance de Maquila</h3>
+      <Split>
+        <Stack>
+          <Card title="Ruta de producción" icon={Route} count={servicesForPanel.length}>
             <OrderServicesPanel
               orderId={order.id}
               orderStatus={order.status}
@@ -219,81 +209,86 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               services={servicesForPanel}
               catalogServices={catalogServices}
             />
-          </div>
+          </Card>
 
-          {/* Órdenes de Servicio emitidas a talleres */}
-          {serviceOrderRows.length > 0 && (
-            <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-              <h3 style={{ marginBottom: "1rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>
-                Órdenes de Servicio (talleres)
-              </h3>
-              <ServiceOrdersPanel rows={serviceOrderRows} op={{ opNumber: order.orderNumber, clientName: order.client.name, garment: order.garment, color: order.color }} />
-            </div>
+          {canOperate && orderServicesForForm.some((s: any) => s.requiredQuantity - s.alreadyDelivered > 0) && (
+            <Card title="Emitir orden de servicio" icon={Send} id="nueva-os">
+              <ProviderDeliveryForm
+                orderId={order.id}
+                orderServices={orderServicesForForm}
+                providers={providersForPanel}
+                orderSizes={orderSizes}
+                orderInfo={orderInfo}
+              />
+            </Card>
           )}
 
-          {/* Salidas y recepciones del taller */}
-          {serviceDeliveriesForIncoming.some((s: any) => s.deliveries.length > 0) && (
-            <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-              <h3 style={{ marginBottom: "1rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>
-                Salidas e Ingresos
-              </h3>
+          <Card title="Órdenes de servicio" icon={Truck} count={serviceOrderRows.length} flush={serviceOrderRows.length === 0 ? false : true}>
+            {serviceOrderRows.length === 0 ? (
+              <EmptyState icon={Send} title="Aún no hay órdenes de servicio">
+                Emite la primera desde una etapa de la ruta de producción.
+              </EmptyState>
+            ) : (
+              <div style={{ padding: "0.5rem 1rem 1rem" }}>
+                <ServiceOrdersPanel rows={serviceOrderRows} op={{ opNumber: order.orderNumber, clientName: order.client.name, garment: order.garment, color: order.color }} />
+              </div>
+            )}
+          </Card>
+
+          {serviceDeliveriesForIncoming.some((sv: any) => sv.deliveries.length > 0) && (
+            <Card title="Salidas e ingresos" icon={FileText}>
               <IncomingPanel orderId={order.id} serviceDeliveries={serviceDeliveriesForIncoming} />
-            </div>
+            </Card>
           )}
+        </Stack>
 
-          {/* Form for registering new OP */}
-          {order.status !== 'ENTREGADO' && order.status !== 'CERRADO' && order.status !== 'CANCELADO' && orderServicesForForm.some((s: any) => s.requiredQuantity - s.alreadyDelivered > 0) && (
-            <ProviderDeliveryForm
-              orderId={order.id}
-              orderServices={orderServicesForForm}
-              providers={providersForPanel}
-              orderSizes={orderSizes}
-              orderInfo={orderInfo}
+        <Stack>
+          <Card title="Datos generales" icon={Info}>
+            <KV
+              items={[
+                { label: "Cliente", value: order.client.name },
+                { label: "Fecha", value: order.date.toLocaleDateString("es-PE") },
+                { label: "Prenda", value: order.garment },
+                { label: "Color", value: order.color },
+                ...(pedidoRef ? [{ label: "Pedido", value: <Link href={`/admin/pedidos/${pedidoRef.id}`} style={{ color: "var(--primary)" }}>{pedidoRef.pedidoNumber}</Link> }] : []),
+                { label: "Observaciones", value: order.notes || "—", wide: true },
+              ]}
             />
-          )}
+          </Card>
 
-        </div>
+          <Card title="Tallas" icon={Ruler} count={order.totalQuantity} flush>
+            <table className={styles.table} style={{ width: "100%" }}>
+              <thead><tr><th>Talla</th><th style={{ textAlign: "right" }}>Cantidad</th></tr></thead>
+              <tbody>
+                {order.sizes.map((sz: any) => (
+                  <tr key={sz.id}><td><strong>{sz.size}</strong></td><td style={{ textAlign: "right" }}>{sz.quantity}</td></tr>
+                ))}
+              </tbody>
+            </table>
+          </Card>
 
-        {/* PANEL DERECHO */}
-        <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
-          <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Entregas y Saldos</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.125rem" }}>
-                <span style={{ color: "var(--text-muted)" }}>Total Solicitado:</span>
-                <strong>{order.totalQuantity}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.125rem", color: "green" }}>
-                <span>Total Entregado:</span>
-                <strong>{order.totalDelivered}</strong>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: "1.25rem", borderTop: "1px dashed var(--card-border)", paddingTop: "1rem", color: order.pending > 0 ? "orange" : "var(--text-muted)" }}>
-                <span>Saldo Pendiente:</span>
-                <strong>{order.pending}</strong>
-              </div>
-            </div>
-          </div>
-
-          {/* Historial de Despachos */}
-          <div style={{ background: "var(--card-bg)", padding: "2rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}>
-            <h3 style={{ marginBottom: "1.5rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>Despachos Asociados</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-              {order.guides.map((gdetail: any) => (
-                <div key={gdetail.id} style={{ display: "flex", flexDirection: "column", gap: "0.25rem", paddingBottom: "1rem", borderBottom: "1px solid var(--card-border)" }}>
-                  <Link href={`/admin/guides/${gdetail.guide.id}`} style={{ fontWeight: 600, color: "var(--primary)" }}>
-                    Despacho {gdetail.guide.sunatNumber}
-                  </Link>
-                  <div style={{ fontSize: "0.875rem", color: "var(--text-muted)" }}>{gdetail.guide.date.toLocaleDateString()}</div>
-                  <div style={{ fontWeight: 600, color: "green" }}>+ {gdetail.deliveredQuantity} entregados
-                    {gdetail.size && <span style={{ fontWeight: 400, color: "var(--text-muted)" }}> — Talla: {gdetail.size}</span>}
+          <Card title="Despachos al cliente" icon={Truck} count={order.guides.length}>
+            {order.guides.length === 0 ? (
+              <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>No se han registrado despachos.</span>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {order.guides.map((gd: any) => (
+                  <div key={gd.id} style={{ display: "flex", justifyContent: "space-between", gap: "0.75rem", paddingBottom: "0.75rem", borderBottom: "1px solid var(--gray-100)" }}>
+                    <div>
+                      <Link href={`/admin/guides/${gd.guide.id}`} style={{ fontWeight: 700, color: "var(--primary)" }}>{gd.guide.sunatNumber}</Link>
+                      <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>{gd.guide.date.toLocaleDateString("es-PE")}</div>
+                    </div>
+                    <div style={{ textAlign: "right", fontWeight: 700, color: "var(--success)" }}>
+                      +{gd.deliveredQuantity}
+                      {gd.size && <div style={{ fontWeight: 500, fontSize: "0.75rem", color: "var(--text-muted)" }}>Talla {gd.size}</div>}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {order.guides.length === 0 && <span style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>No se han registrado despachos.</span>}
-            </div>
-          </div>
-        </div>
-      </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </Stack>
+      </Split>
     </div>
   );
 }

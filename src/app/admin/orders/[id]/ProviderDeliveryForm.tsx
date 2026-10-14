@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import { Truck, FileText } from "lucide-react";
 import OsDocument from "./OsDocument";
+import { OPEN_OS_FORM_EVENT } from "./OrderServicesPanel";
 
 type OrderServiceRow = {
   id: number;
@@ -102,6 +103,24 @@ export default function ProviderDeliveryForm({
     setSizeEntries(buildSizeEntries(selectedService));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderServiceId]);
+
+  // Las etapas de la ruta de producción abren este formulario con su servicio seleccionado
+  useEffect(() => {
+    const onOpen = (ev: Event) => {
+      const id = (ev as CustomEvent<{ orderServiceId: number }>).detail?.orderServiceId;
+      const svc = orderServices.find((x) => x.id === id);
+      if (!svc) return;
+      setOpen(true);
+      setOrderServiceId(id);
+      setSizeEntries(buildSizeEntries(svc));
+      setProviderId(svc.provider?.id || 0);
+      setError("");
+      requestAnimationFrame(() => document.getElementById("nueva-os")?.scrollIntoView({ behavior: "smooth", block: "center" }));
+    };
+    window.addEventListener(OPEN_OS_FORM_EVENT, onOpen);
+    return () => window.removeEventListener(OPEN_OS_FORM_EVENT, onOpen);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderServices]);
 
   const handleServiceChange = (id: number) => {
     setOrderServiceId(id);
@@ -215,7 +234,7 @@ export default function ProviderDeliveryForm({
             display: "flex", alignItems: "center", gap: "0.5rem",
             background: "var(--primary)", color: "white", border: "none",
             padding: "0.75rem 1.25rem", borderRadius: "var(--radius)",
-            cursor: "pointer", fontWeight: 600, width: "100%", justifyContent: "center", marginTop: "1rem",
+            cursor: "pointer", fontWeight: 600, width: "100%", justifyContent: "center", marginTop: 0,
           }}
         >
           <FileText size={18} /> Emitir orden de servicio (OS)
@@ -223,7 +242,7 @@ export default function ProviderDeliveryForm({
       ) : (
         <form
           onSubmit={handleSubmit}
-          style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.85rem", background: "var(--bg-color)", padding: "1.25rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}
+          style={{ marginTop: 0, display: "flex", flexDirection: "column", gap: "0.85rem", background: "var(--bg-color)", padding: "1.25rem", borderRadius: "var(--radius)", border: "1px solid var(--card-border)" }}
         >
           <strong style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--primary)", fontSize: "0.95rem" }}>
             <Truck size={16} /> Nueva Orden de Servicio (OS)

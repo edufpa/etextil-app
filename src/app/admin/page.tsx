@@ -73,7 +73,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       include: {
         client: { select: { name: true } },
         guides: { select: { deliveredQuantity: true } },
-        services: { select: { deliveries: { select: { quantity: true } } } },
+        services: { select: { deliveries: { select: { quantity: true, incomings: { select: { quantity: true } } } } } },
       },
     }),
     prisma.providerDelivery.findMany({
@@ -96,7 +96,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
       : totalDelivered > 0 ? "PARCIALMENTE ENTREGADO"
       : sentToWorkshop > 0 ? "EN PROCESO"
       : "PENDIENTE";
-    return { ...o, derivedStatus, totalDelivered, sentToWorkshop };
+    const inShop = o.services.reduce((acc: number, svc: any) =>
+      acc + svc.deliveries.reduce((a: number, d: any) => a + d.quantity - (d.incomings ?? []).reduce((x: number, i: any) => x + i.quantity, 0), 0), 0);
+    return { ...o, derivedStatus, totalDelivered, sentToWorkshop, inShop: Math.max(0, inShop) };
   });
 
   const pendienteOrders = activeOrders.filter((o: any) => o.derivedStatus === "PENDIENTE");
@@ -225,7 +227,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Se
                     <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{o.client.name} — {o.garment}</div>
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#7c3aed" }}>{o.sentToWorkshop} env.</div>
+                    <div style={{ fontSize: "0.78rem", fontWeight: 600, color: "#7c3aed" }}>{o.inShop} en taller</div>
                     <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>{o.totalQuantity} total</div>
                   </div>
                 </Link>

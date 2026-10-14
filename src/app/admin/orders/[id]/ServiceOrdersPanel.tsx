@@ -1,9 +1,10 @@
 "use client";
 
-import { voidServiceOrder } from "@/app/actions/serviceOrders";
+import { voidServiceOrder, receiveServiceOrder } from "@/app/actions/serviceOrders";
+import OsDocument from "./OsDocument";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Ban } from "lucide-react";
+import { Ban, PackageCheck, Printer } from "lucide-react";
 
 export type ServiceOrderRow = {
   id: number;
@@ -17,6 +18,7 @@ export type ServiceOrderRow = {
   received: number;
   unitPrice: number | null;
   voidNote: string | null;
+  notes: string | null;
   lines: { size: string; quantity: number; received: number }[];
 };
 
@@ -30,10 +32,13 @@ const STATUS_COLOR: Record<ServiceOrderRow["status"], string> = {
 const money = (n: number) => `S/ ${n.toFixed(2)}`;
 const day = (iso: string) => new Date(iso).toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit", year: "numeric" });
 
-export default function ServiceOrdersPanel({ rows }: { rows: ServiceOrderRow[] }) {
+export type OpInfo = { opNumber: string; clientName: string; garment: string; color: string };
+
+export default function ServiceOrdersPanel({ rows, op }: { rows: ServiceOrderRow[]; op: OpInfo }) {
   const router = useRouter();
   const [busy, setBusy] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [printing, setPrinting] = useState<ServiceOrderRow | null>(null);
 
   const handleVoid = async (r: ServiceOrderRow) => {
     const reason = window.prompt(`Anular ${r.osNumber}. Se liberan las ${r.sent} u enviadas. Motivo (opcional):`);
@@ -46,6 +51,19 @@ export default function ServiceOrdersPanel({ rows }: { rows: ServiceOrderRow[] }
     else router.refresh();
   };
 
+  const handleReceiveAll = async (r: ServiceOrderRow) => {
+    const pending = r.sent - r.received;
+    if (!window.confirm(`Registrar el ingreso de las ${pending} u pendientes de ${r.osNumber} con fecha de hoy?`)) return;
+    setBusy(r.id);
+    setError("");
+    const d = new Date();
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const res = await receiveServiceOrder(r.id, { date: new Date(iso + "T12:00:00") });
+    setBusy(null);
+    if (!res.success) setError(res.error);
+    else router.refresh();
+  };
+
   const active = rows.filter((r) => r.status !== "ANULADA");
   const totalValue = active.reduce((a, r) => a + (r.unitPrice ?? 0) * r.sent, 0);
   const payable = active.reduce((a, r) => a + (r.unitPrice ?? 0) * r.received, 0);
@@ -53,6 +71,26 @@ export default function ServiceOrdersPanel({ rows }: { rows: ServiceOrderRow[] }
 
   return (
     <div>
+      {printing && (
+        <OsDocument
+          onClose={() => setPrinting(null)}
+          data={{
+            osNumber: printing.osNumber,
+            opNumber: op.opNumber,
+            clientName: op.clientName,
+            garment: op.garment,
+            color: op.color,
+            serviceName: printing.serviceName,
+            providerName: printing.providerName,
+            date: printing.date,
+            dueDate: printing.dueDate,
+            lines: printing.lines.map((l) => ({ size: l.size, quantity: l.quantity })),
+            unitPrice: printing.unitPrice,
+            notes: printing.notes,
+            voided: printing.status === "ANULADA",
+          }}
+        />
+      )}
       {error && <div style={{ color: "red", fontSize: "0.875rem", padding: "0.5rem", background: "#fff0f0", borderRadius: "4px", marginBottom: "0.75rem" }}>{error}</div>}
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
@@ -108,6 +146,25 @@ export default function ServiceOrdersPanel({ rows }: { rows: ServiceOrderRow[] }
                     </span>
                   </td>
                   <td style={{ padding: "0.5rem 0.4rem", textAlign: "right" }}>
+                    {r.status !== "ANULADA" && (
+                      <button
+                        onClick={() => setPrinting(r)}
+                        title="Imprimir OS"
+                        style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "4px 8px", cursor: "pointer", marginRight: "4px" }}
+                      >
+                        <Printer size={14} />
+                      </button>
+                    )}
+                    {(r.status === "EMITIDA" || r.status === "PARCIAL") && (
+                      <button
+                        onClick={() => handleReceiveAll(r)}
+                        disabled={busy === r.id}
+                        title="Registrar ingreso de todo lo pendiente"
+                        style={{ background: "transparent", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "4px 8px", cursor: "pointer", color: "green", marginRight: "4px" }}
+                      >
+                        <PackageCheck size={14} />
+                      </button>
+                    )}
                     {r.status === "EMITIDA" && (
                       <button
                         onClick={() => handleVoid(r)}

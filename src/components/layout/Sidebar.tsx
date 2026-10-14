@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, ClipboardList, ScrollText, Shirt, BookOpen, PieChart, ChevronDown, ShoppingBag, PackageCheck, Menu, X } from "lucide-react";
+import { LayoutDashboard, Scissors, Truck, Users, Package, FileText, Ruler, Palette, BarChart2, Wallet, ClipboardList, ScrollText, Shirt, BookOpen, PieChart, ChevronDown, ShoppingBag, PackageCheck, Menu, X } from "lucide-react";
 import styles from "./Sidebar.module.css";
 
 const mainItems = [
@@ -13,6 +13,7 @@ const mainItems = [
   { name: "Taller por proveedor", path: "/admin/taller", icon: PackageCheck },
   { name: "Despachos", path: "/admin/guides", icon: FileText },
   { name: "Reporte Talleres", path: "/admin/providers/reporte", icon: BarChart2 },
+  { name: "Cuentas por pagar", path: "/admin/providers/pagos", icon: Wallet },
   { name: "Reporte Servicios", path: "/admin/services/reporte", icon: PieChart },
   { name: "Log Actividad", path: "/admin/log", icon: ScrollText },
   { name: "Admin General", path: "/admin/global", icon: Users },

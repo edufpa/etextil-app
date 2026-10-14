@@ -7,6 +7,7 @@ import { getSessionCompanyId } from "@/lib/company";
 import { logActivity } from "@/lib/logger";
 import { attachDefaultServicesToOrder } from "@/lib/default-op-services";
 import { friendlyError, UserError } from "@/lib/errors";
+import { syncPedidoStatus } from "@/lib/pedido-status";
 
 /** Throws UserError if the OP doesn't exist or belongs to another company. */
 async function assertOrderAccess(orderId: number) {
@@ -147,11 +148,12 @@ export async function deleteOrder(orderId: number) {
     await assertOrderAccess(orderId);
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { orderNumber: true, garment: true, totalQuantity: true },
+      select: { orderNumber: true, garment: true, totalQuantity: true, pedido_id: true },
     });
     if (!order) return { error: "Pedido no encontrado." };
 
     await prisma.order.delete({ where: { id: orderId } });
+    await syncPedidoStatus(prisma, order.pedido_id);
 
     await logActivity("DELETE_ORDER", `Pedido eliminado: ${order.orderNumber} — ${order.garment}, ${order.totalQuantity} u.`);
     revalidatePath("/admin/orders");
@@ -198,10 +200,12 @@ export async function getOrderSummary(orderId: number) {
 export async function closeOrderManually(orderId: number) {
   try {
     await assertOrderAccess(orderId);
-    await prisma.order.update({
+    const closed = await prisma.order.update({
       where: { id: orderId },
       data: { status: "ENTREGADO" },
+      select: { pedido_id: true },
     });
+    await syncPedidoStatus(prisma, closed.pedido_id);
     revalidatePath(`/admin/orders/${orderId}`);
     revalidatePath("/admin/orders");
     return { success: true };

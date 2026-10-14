@@ -17,10 +17,15 @@ export default function DeletePedidoButton({ pedidoId, hasOps }: { pedidoId: num
     if (!confirm("¿Eliminar este pedido? Esta acción no se puede deshacer.")) return;
     setLoading(true);
     try {
-      await deletePedido(pedidoId);
+      const res = await deletePedido(pedidoId);
+      if (!res.success) {
+        alert(res.error);
+        setLoading(false);
+        return;
+      }
       router.push("/admin/pedidos");
-    } catch (err: any) {
-      alert(err.message || "Error al eliminar pedido");
+    } catch {
+      alert("Error al eliminar el pedido. Recarga la página e inténtalo de nuevo.");
       setLoading(false);
     }
   };

@@ -82,6 +82,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       received: so.lines.reduce((a: number, l: any) => a + lineRecv(l), 0),
       unitPrice: so.lines.find((l: any) => l.unitPrice !== null)?.unitPrice != null ? Number(so.lines.find((l: any) => l.unitPrice !== null).unitPrice) : null,
       voidNote: so.voidNote,
+      notes: so.notes,
       lines: so.lines.map((l: any) => ({ size: l.size ?? "", quantity: l.quantity, received: lineRecv(l) })),
     };
   });
@@ -126,6 +127,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
     };
   });
 
+  const osNumberById = new Map<number, string>(serviceOrders.map((so: any) => [so.id, so.osNumber]));
   const serviceDeliveriesForIncoming = order.services.map((svc: any) => ({
     serviceId: svc.id,
     serviceName: svc.service.name,
@@ -136,6 +138,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
       date: d.date,
       notes: d.notes,
       providerName: providers.find((p: any) => p.id === d.provider_id)?.businessName || "Taller",
+      osNumber: osNumberById.get(d.serviceOrder_id) ?? null,
       incomings: (d.incomings ?? []).map((i: any) => ({
         id: i.id,
         quantity: i.quantity,
@@ -224,7 +227,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               <h3 style={{ marginBottom: "1rem", borderBottom: "1px solid var(--card-border)", paddingBottom: "0.5rem" }}>
                 Órdenes de Servicio (talleres)
               </h3>
-              <ServiceOrdersPanel rows={serviceOrderRows} />
+              <ServiceOrdersPanel rows={serviceOrderRows} op={{ opNumber: order.orderNumber, clientName: order.client.name, garment: order.garment, color: order.color }} />
             </div>
           )}
 

@@ -3,7 +3,8 @@
 import { createServiceOrder } from "@/app/actions/serviceOrders";
 import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
-import { Truck, FileText, Printer, X } from "lucide-react";
+import { Truck, FileText } from "lucide-react";
+import OsDocument from "./OsDocument";
 
 type OrderServiceRow = {
   id: number;
@@ -186,119 +187,24 @@ export default function ProviderDeliveryForm({
 
   return (
     <div>
-      {/* OP Modal */}
       {opData && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem",
-        }}>
-          <div id="op-printable" style={{
-            background: "white", borderRadius: "var(--radius)", padding: "2rem",
-            width: "100%", maxWidth: "520px", position: "relative",
-          }}>
-            <button
-              onClick={closeOP}
-              style={{ position: "absolute", top: "1rem", right: "1rem", background: "none", border: "none", cursor: "pointer", color: "#666" }}
-            >
-              <X size={20} />
-            </button>
-
-            {/* OP Header */}
-            <div style={{ textAlign: "center", marginBottom: "1.5rem", borderBottom: "2px solid #333", paddingBottom: "1rem" }}>
-              <div style={{ fontSize: "0.75rem", color: "#666", fontWeight: 600, letterSpacing: "0.08em", textTransform: "uppercase" }}>
-                Orden de Servicio
-              </div>
-              <div style={{ fontSize: "1.6rem", fontWeight: 900, color: "#111", marginTop: "0.25rem" }}>
-                {opData.osNumber}
-              </div>
-              <div style={{ fontSize: "0.85rem", color: "#333", marginTop: "0.15rem", fontWeight: 600 }}>
-                OP {orderInfo.orderNumber}
-              </div>
-              <div style={{ fontSize: "0.8rem", color: "#555", marginTop: "0.25rem" }}>
-                Emitida: {new Date(opData.date + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })}
-                {opData.dueDate && ` · Entrega: ${new Date(opData.dueDate + "T12:00:00").toLocaleDateString("es-PE", { day: "2-digit", month: "long", year: "numeric" })}`}
-              </div>
-            </div>
-
-            {/* Info Grid */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem", marginBottom: "1.5rem", fontSize: "0.85rem" }}>
-              <div><span style={{ color: "#888", fontSize: "0.72rem", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Cliente</span>{orderInfo.clientName}</div>
-              <div><span style={{ color: "#888", fontSize: "0.72rem", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Prenda</span>{orderInfo.garment}</div>
-              <div><span style={{ color: "#888", fontSize: "0.72rem", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Color</span>{orderInfo.color}</div>
-              <div><span style={{ color: "#888", fontSize: "0.72rem", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Servicio</span><strong>{opData.serviceName}</strong></div>
-              <div style={{ gridColumn: "span 2" }}>
-                <span style={{ color: "#888", fontSize: "0.72rem", display: "block", textTransform: "uppercase", fontWeight: 600 }}>Taller / Proveedor</span>
-                <strong style={{ fontSize: "1rem" }}>{opData.providerName}</strong>
-              </div>
-            </div>
-
-            {/* Size table */}
-            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.9rem", marginBottom: "1rem" }}>
-              <thead>
-                <tr style={{ background: "#f0f4ff" }}>
-                  <th style={{ padding: "0.5rem 0.75rem", textAlign: "left", border: "1px solid #dde", fontWeight: 700 }}>Talla</th>
-                  <th style={{ padding: "0.5rem 0.75rem", textAlign: "center", border: "1px solid #dde", fontWeight: 700 }}>Cantidad</th>
-                </tr>
-              </thead>
-              <tbody>
-                {opData.sizes.map((e) => (
-                  <tr key={e.size}>
-                    <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", fontWeight: 600 }}>{e.size}</td>
-                    <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", textAlign: "center", fontWeight: 800, fontSize: "1.05rem" }}>{e.toSend}</td>
-                  </tr>
-                ))}
-                <tr style={{ background: "#f8f8f8" }}>
-                  <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", fontWeight: 700 }}>TOTAL</td>
-                  <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", textAlign: "center", fontWeight: 900, fontSize: "1.1rem" }}>
-                    {opData.sizes.reduce((s, e) => s + e.toSend, 0)}
-                  </td>
-                </tr>
-                {opData.price !== null && (
-                  <>
-                    <tr>
-                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", fontWeight: 600 }}>Precio por prenda</td>
-                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", textAlign: "center" }}>S/ {opData.price.toFixed(2)}</td>
-                    </tr>
-                    <tr style={{ background: "#f8f8f8" }}>
-                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", fontWeight: 700 }}>TOTAL A PAGAR</td>
-                      <td style={{ padding: "0.5rem 0.75rem", border: "1px solid #dde", textAlign: "center", fontWeight: 900 }}>
-                        S/ {(opData.price * opData.sizes.reduce((s, e) => s + e.toSend, 0)).toFixed(2)}
-                      </td>
-                    </tr>
-                  </>
-                )}
-              </tbody>
-            </table>
-
-            {opData.notes && (
-              <div style={{ fontSize: "0.8rem", color: "#666", borderTop: "1px solid #eee", paddingTop: "0.75rem" }}>
-                <strong>Notas:</strong> {opData.notes}
-              </div>
-            )}
-
-            {/* Signature lines */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginTop: "2rem", paddingTop: "1rem" }}>
-              <div style={{ borderTop: "1px solid #999", paddingTop: "0.4rem", fontSize: "0.72rem", color: "#777", textAlign: "center" }}>Entregado por</div>
-              <div style={{ borderTop: "1px solid #999", paddingTop: "0.4rem", fontSize: "0.72rem", color: "#777", textAlign: "center" }}>Recibido por</div>
-            </div>
-
-            {/* Buttons */}
-            <div style={{ display: "flex", gap: "0.75rem", marginTop: "1.5rem" }}>
-              <button
-                onClick={() => window.print()}
-                style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem", background: "#111", color: "white", border: "none", padding: "0.7rem", borderRadius: "var(--radius)", cursor: "pointer", fontWeight: 600 }}
-              >
-                <Printer size={16} /> Imprimir OS
-              </button>
-              <button
-                onClick={closeOP}
-                style={{ flex: 1, background: "transparent", color: "var(--text-muted)", border: "1px solid var(--card-border)", padding: "0.7rem", borderRadius: "var(--radius)", cursor: "pointer" }}
-              >
-                Cerrar
-              </button>
-            </div>
-          </div>
-        </div>
+        <OsDocument
+          onClose={closeOP}
+          data={{
+            osNumber: opData.osNumber,
+            opNumber: orderInfo.orderNumber,
+            clientName: orderInfo.clientName,
+            garment: orderInfo.garment,
+            color: orderInfo.color,
+            serviceName: opData.serviceName,
+            providerName: opData.providerName,
+            date: opData.date,
+            dueDate: opData.dueDate || null,
+            lines: opData.sizes.map((e) => ({ size: e.size, quantity: e.toSend })),
+            unitPrice: opData.price,
+            notes: opData.notes,
+          }}
+        />
       )}
 
       {/* Main form toggle */}

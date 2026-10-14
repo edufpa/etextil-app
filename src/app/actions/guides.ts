@@ -2,6 +2,7 @@
 
 import { prisma } from "@/lib/prisma";
 import { revalidatePath } from "next/cache";
+import { syncPedidoStatus } from "@/lib/pedido-status";
 
 export async function createGuide(data: {
   sunatNumber: string;
@@ -81,6 +82,7 @@ export async function createGuide(data: {
         if (newStatus !== order.status) {
           await tx.order.update({ where: { id: orderId }, data: { status: newStatus } });
         }
+        await syncPedidoStatus(tx, order.pedido_id);
       }
     });
 
@@ -137,6 +139,7 @@ export async function deleteGuide(id: number) {
         else if (totalDelivered > 0) newStatus = "PARCIALMENTE ENTREGADO";
 
         await tx.order.update({ where: { id: orderId }, data: { status: newStatus } });
+        await syncPedidoStatus(tx, order.pedido_id);
       }
     });
 

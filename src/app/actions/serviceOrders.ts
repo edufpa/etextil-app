@@ -6,7 +6,8 @@ import { revalidatePath } from "next/cache";
 import { logActivity } from "@/lib/logger";
 import { getSessionCompanyId } from "@/lib/company";
 import { friendlyError, UserError } from "@/lib/errors";
-import { assertServiceOrderAccess, createDeliveriesTx, loadOrderServiceForDelivery, TX_OPTS } from "@/lib/workshop-guard";
+import { assertServiceOrderAccess, createDeliveriesTx, createIncomingTx, loadOrderServiceForDelivery, TX_OPTS } from "@/lib/workshop-guard";
+import { withRetry } from "@/lib/retry";
 import { formatOsNumber, parseOsNumber } from "@/lib/service-orders";
 
 /**
@@ -22,19 +23,6 @@ async function nextOsNumber(tx: Prisma.TransactionClient, companyId: number | nu
   const rows = await tx.serviceOrder.findMany({ where: { company_id: companyId }, select: { osNumber: true } });
   const max = rows.reduce((m, r) => Math.max(m, parseOsNumber(r.osNumber)), 0);
   return formatOsNumber(max + 1);
-}
-
-/** Reintenta transacciones Serializable que chocan con otra emisión simultánea (P2034) o con un número ya usado (P2002). */
-async function withRetry<T>(fn: () => Promise<T>, attempts = 6): Promise<T> {
-  for (let i = 1; ; i++) {
-    try {
-      return await fn();
-    } catch (e) {
-      const code = (e as { code?: string })?.code;
-      if (i >= attempts || (code !== "P2034" && code !== "P2002")) throw e;
-      await new Promise((r) => setTimeout(r, 25 * i + Math.random() * 50));
-    }
-  }
 }
 
 function revalidateOp(orderId: number) {
@@ -148,5 +136,41 @@ export async function voidServiceOrder(id: number, reason?: string) {
   } catch (error) {
     console.error(error);
     return { success: false as const, error: friendlyError(error, "Error al anular la orden de servicio.") };
+  }
+}
+
+/**
+ * Registra el ingreso de TODO lo pendiente de una OS (el taller devolvió el lote completo).
+ * Para recepciones parciales se sigue registrando por línea.
+ */
+export async function receiveServiceOrder(id: number, data: { date: Date; notes?: string }) {
+  try {
+    const companyId = await getSessionCompanyId();
+    if (isNaN(data.date.getTime())) throw new UserError("Fecha inválida.");
+    const res = await prisma.$transaction(async (tx) => {
+      const so = await assertServiceOrderAccess(tx, id, companyId);
+      if (so.voidedAt) throw new UserError(`${so.osNumber} está anulada.`);
+      const lines = await tx.providerDelivery.findMany({
+        where: { serviceOrder_id: id },
+        select: { id: true, quantity: true, incomings: { select: { quantity: true } } },
+        orderBy: { id: "asc" },
+      });
+      let total = 0;
+      for (const l of lines) {
+        const pending = l.quantity - l.incomings.reduce((a, i) => a + i.quantity, 0);
+        if (pending <= 0) continue;
+        await createIncomingTx(tx, companyId, { providerDelivery_id: l.id, quantity: pending, date: data.date, notes: data.notes });
+        total += pending;
+      }
+      if (total === 0) throw new UserError(`${so.osNumber} no tiene cantidades pendientes de recibir.`);
+      return { so, total };
+    }, TX_OPTS);
+    revalidateOp(res.so.orderService.order.id);
+    revalidatePath("/admin/providers");
+    await logActivity("REGISTER_INGRESO", `Ingreso completo ${res.so.osNumber} (OP ${res.so.orderService.order.orderNumber}): ${res.total} u.`);
+    return { success: true as const, total: res.total };
+  } catch (error) {
+    console.error(error);
+    return { success: false as const, error: friendlyError(error, "Error al registrar el ingreso de la OS.") };
   }
 }

@@ -113,8 +113,8 @@ export function parseOsNumber(osNumber: string | null | undefined) {
   return m ? Number(m[1]) : 0;
 }
 
-/** Orden por defecto de las etapas (Corte → Confección → Estampado → Acabados). */
-export const DEFAULT_STAGE_ORDER = ["corte", "confecci", "estampad", "acabad"];
+/** Orden por defecto de las etapas (Corte → Confección → Estampado). */
+export const DEFAULT_STAGE_ORDER = ["corte", "confecci", "estampad"];
 
 export function defaultSequenceFor(serviceName: string): number {
   const n = serviceName.toLowerCase();

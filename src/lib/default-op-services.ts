@@ -4,7 +4,6 @@ export const DEFAULT_OP_SERVICE_NAMES = [
   "Corte",
   "Confección",
   "Estampado",
-  "Acabados",
 ] as const;
 
 type ServiceRow = { id: number; name: string; trackBySize?: boolean };
@@ -20,7 +19,7 @@ export function findServiceByDefaultName(
   );
 }
 
-/** Asigna Corte, Confección, Estampado y Acabados a una OP (crea servicios faltantes si createMissing). */
+/** Asigna Corte, Confección y Estampado a una OP (crea servicios faltantes si createMissing). */
 export async function attachDefaultServicesToOrder(
   tx: Prisma.TransactionClient,
   orderId: number,

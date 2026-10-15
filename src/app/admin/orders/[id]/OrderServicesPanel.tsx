@@ -2,11 +2,13 @@
 
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Scissors, Plus, Trash2, Truck, Ruler, X } from "lucide-react";
+import { Plus, Trash2, Truck, Send, X, Check } from "lucide-react";
 import { addOrderService, removeOrderService, ensureDefaultOrderServices } from "@/app/actions/orders";
 import { DEFAULT_OP_SERVICE_NAMES } from "@/lib/default-op-services";
 import { quickCreateService } from "@/app/actions/services";
+import { ProgressBar } from "@/components/ui";
 import AdjustQtyButton from "./AdjustQtyButton";
+import s from "./route.module.css";
 
 type CatalogService = { id: number; name: string; type?: string };
 type OrderServiceRow = {
@@ -17,9 +19,15 @@ type OrderServiceRow = {
   requiredQuantity: number;
   sentQty: number;
   receivedQty: number;
+  sequence: number;
+  /** Cuánto se puede enviar todavía (considera la etapa anterior). */
+  available: { total: number; gated: boolean; prevName: string | null };
   providerName?: string | null;
   sizeSplit?: { size: string; quantity: number }[];
 };
+
+/** Pide al formulario de emisión que se abra con esta etapa seleccionada. */
+export const OPEN_OS_FORM_EVENT = "siat:open-os-form";
 
 export default function OrderServicesPanel({
   orderId,
@@ -55,11 +63,12 @@ export default function OrderServicesPanel({
     if (modalOpen) inputRef.current?.focus();
   }, [modalOpen]);
 
-  const assignedIds = new Set(initialServices.map((s) => s.serviceId));
-  const available = catalog.filter((s) => !assignedIds.has(s.id));
+  const assignedIds = new Set(initialServices.map((x) => x.serviceId));
+  const available = catalog.filter((x) => !assignedIds.has(x.id));
+  const stages = [...initialServices].sort((a, b) => (a.sequence || 999) - (b.sequence || 999) || a.id - b.id);
 
   const handleAdd = async () => {
-    if (!addServiceId) { setAddError("Seleccioná un servicio"); return; }
+    if (!addServiceId) { setAddError("Selecciona un servicio"); return; }
     setAdding(true);
     setAddError("");
     const res = await addOrderService(orderId, Number(addServiceId), addQty);
@@ -82,7 +91,7 @@ export default function OrderServicesPanel({
   };
 
   const handleQuickCreate = async () => {
-    if (!newName.trim()) { setModalError("Ingresá un nombre"); return; }
+    if (!newName.trim()) { setModalError("Ingresa un nombre"); return; }
     setModalSaving(true);
     setModalError("");
     const res = await quickCreateService(newName.trim());
@@ -97,23 +106,17 @@ export default function OrderServicesPanel({
     setNewName("");
   };
 
+  const openForm = (orderServiceId: number) =>
+    window.dispatchEvent(new CustomEvent(OPEN_OS_FORM_EVENT, { detail: { orderServiceId } }));
+
   return (
     <>
       {modalOpen && (
-        <div
-          style={{
-            position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)",
-            display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999,
-          }}
-          onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}
-        >
-          <div style={{
-            background: "var(--card-bg)", borderRadius: "10px", padding: "1.5rem",
-            width: 340, boxShadow: "0 8px 32px rgba(0,0,0,0.18)", border: "1px solid var(--card-border)",
-          }}>
+        <div className={s.modalBack} onClick={(e) => e.target === e.currentTarget && setModalOpen(false)}>
+          <div className={s.modal}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "1rem" }}>
-              <span style={{ fontWeight: 700 }}>Nuevo Servicio</span>
-              <button type="button" onClick={() => setModalOpen(false)} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)" }}>
+              <strong>Nuevo servicio</strong>
+              <button type="button" onClick={() => setModalOpen(false)} aria-label="Cerrar" style={{ color: "var(--text-muted)" }}>
                 <X size={18} />
               </button>
             </div>
@@ -123,15 +126,12 @@ export default function OrderServicesPanel({
               onChange={(e) => { setNewName(e.target.value); setModalError(""); }}
               placeholder="Nombre del servicio..."
               onKeyDown={(e) => { if (e.key === "Enter") handleQuickCreate(); if (e.key === "Escape") setModalOpen(false); }}
-              style={{
-                width: "100%", padding: "0.5rem", borderRadius: "6px",
-                border: "1px solid var(--card-border)", background: "var(--bg-color)", boxSizing: "border-box",
-              }}
+              style={{ width: "100%" }}
             />
-            {modalError && <div style={{ color: "#dc2626", fontSize: "0.8rem", marginTop: "0.4rem" }}>{modalError}</div>}
+            {modalError && <div style={{ color: "var(--danger)", fontSize: "0.8rem", marginTop: "0.4rem" }}>{modalError}</div>}
             <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", marginTop: "1rem" }}>
-              <button type="button" onClick={() => setModalOpen(false)} style={{ padding: "0.4rem 1rem", borderRadius: "6px", border: "1px solid var(--card-border)", background: "transparent", cursor: "pointer" }}>Cancelar</button>
-              <button type="button" onClick={handleQuickCreate} disabled={modalSaving} style={{ padding: "0.4rem 1rem", borderRadius: "6px", background: "var(--primary)", color: "white", border: "none", cursor: "pointer", fontWeight: 600 }}>
+              <button type="button" className="btn btn-secondary" onClick={() => setModalOpen(false)}>Cancelar</button>
+              <button type="button" className="btn btn-primary" onClick={handleQuickCreate} disabled={modalSaving}>
                 {modalSaving ? "Guardando..." : "Guardar"}
               </button>
             </div>
@@ -139,29 +139,30 @@ export default function OrderServicesPanel({
         </div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem" }}>
-        {initialServices.map((svc) => {
-          const pct = svc.requiredQuantity > 0 ? Math.min(100, Math.round(svc.receivedQty / svc.requiredQuantity * 100)) : 0;
-          const sentPct = svc.requiredQuantity > 0 ? Math.min(100, Math.round(svc.sentQty / svc.requiredQuantity * 100)) : 0;
+      <div className={s.route}>
+        {stages.map((svc, idx) => {
+          const done = svc.receivedQty >= svc.requiredQuantity && svc.requiredQuantity > 0;
+          const started = svc.sentQty > 0;
+          const canSend = canEdit && svc.available.total > 0;
           return (
-            <div key={svc.id}>
-              <div style={{ display: "flex", alignItems: "center", gap: "1rem", marginBottom: "0.5rem" }}>
-                <div style={{ color: "var(--primary)" }}><Scissors size={20} /></div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600 }}>{svc.serviceName}</div>
-                  <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
-                    {svc.serviceType}
-                    {svc.providerName && (
-                      <span> · <strong style={{ color: "var(--primary)" }}><Truck size={12} style={{ display: "inline" }} /> {svc.providerName}</strong></span>
-                    )}
+            <div key={svc.id} className={`${s.stage} ${done ? s.stageDone : ""}`}>
+              <div className={`${s.num} ${done ? s.numDone : started ? s.numActive : ""}`}>
+                {done ? <Check size={18} /> : idx + 1}
+              </div>
+              <div className={`${s.box} ${done ? s.boxDone : ""}`}>
+                <div className={s.top}>
+                  <div>
+                    <div className={s.name}>
+                      {svc.serviceName}
+                      {done && <span className="pill pill-success">Completada</span>}
+                    </div>
+                    <div className={s.meta}>
+                      {svc.serviceType}
+                      {svc.providerName && <> · <Truck size={11} style={{ display: "inline" }} /> {svc.providerName}</>}
+                    </div>
                   </div>
-                </div>
-                <div style={{ textAlign: "right", fontSize: "0.82rem", display: "flex", flexDirection: "column", gap: "0.15rem", alignItems: "flex-end" }}>
-                  <span style={{ color: "var(--primary)" }}>Env: <strong>{svc.sentQty}</strong></span>
-                  <span style={{ color: "green" }}>Rec: <strong>{svc.receivedQty}</strong></span>
-                  <span style={{ color: "var(--text-muted)" }}>Req: {svc.requiredQuantity}</span>
-                  {canEdit && (
-                    <div style={{ display: "flex", gap: "0.35rem", alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
+                  <div className={s.tools}>
+                    {canEdit && (
                       <AdjustQtyButton
                         orderServiceId={svc.id}
                         orderId={orderId}
@@ -169,63 +170,74 @@ export default function OrderServicesPanel({
                         sentQty={svc.sentQty}
                         serviceName={svc.serviceName}
                       />
-                      {svc.sentQty === 0 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemove(svc.id)}
-                          disabled={removingId === svc.id}
-                          title="Quitar servicio"
-                          style={{
-                            background: "none", border: "1px solid #fecaca", borderRadius: "4px",
-                            padding: "2px 6px", cursor: "pointer", color: "#dc2626",
-                            display: "flex", alignItems: "center", gap: "3px", fontSize: "0.7rem",
-                          }}
-                        >
-                          <Trash2 size={12} /> {removingId === svc.id ? "..." : "Quitar"}
-                        </button>
-                      )}
-                    </div>
-                  )}
+                    )}
+                    {canEdit && svc.sentQty === 0 && (
+                      <button
+                        type="button"
+                        className={`btn btn-secondary ${s.small} ${s.danger}`}
+                        onClick={() => handleRemove(svc.id)}
+                        disabled={removingId === svc.id}
+                        title="Quitar servicio"
+                      >
+                        <Trash2 size={13} /> {removingId === svc.id ? "..." : "Quitar"}
+                      </button>
+                    )}
+                    {canSend && (
+                      <button type="button" className={`btn btn-primary ${s.small}`} onClick={() => openForm(svc.id)}>
+                        <Send size={13} /> Emitir OS
+                      </button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              {svc.sizeSplit && svc.sizeSplit.length > 0 && (
-                <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
-                  {svc.sizeSplit.map((sz) => (
-                    <span key={sz.size} style={{ display: "inline-flex", alignItems: "center", gap: "4px", background: "var(--bg-color)", border: "1px solid var(--card-border)", borderRadius: "6px", padding: "2px 8px", fontSize: "0.75rem" }}>
-                      <Ruler size={10} style={{ color: "var(--primary)" }} />
-                      <strong style={{ color: "var(--primary)" }}>{sz.size}</strong>: {sz.quantity}
-                    </span>
-                  ))}
+
+                <div className={s.nums}>
+                  <div className={s.numBox}><span>Requerido</span><strong>{svc.requiredQuantity}</strong></div>
+                  <div className={s.numBox}><span>Enviado</span><strong className={s.accent}>{svc.sentQty}</strong></div>
+                  <div className={s.numBox}><span>Recibido</span><strong className={s.good}>{svc.receivedQty}</strong></div>
+                  <div className={s.numBox}><span>Disponible</span><strong>{svc.available.total}</strong></div>
                 </div>
-              )}
-              <div style={{ position: "relative", height: "8px", background: "var(--bg-color)", borderRadius: "4px", overflow: "hidden", marginBottom: "0.5rem" }}>
-                <div style={{ position: "absolute", height: "100%", width: `${sentPct}%`, background: "rgba(59,130,246,0.25)", borderRadius: "4px" }} />
-                <div style={{ position: "absolute", height: "100%", width: `${pct}%`, background: pct >= 100 ? "green" : "var(--primary)", transition: "width 0.3s ease" }} />
-              </div>
-              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)" }}>
-                {pct}% ingresado · {sentPct}% enviado al taller
+
+                <ProgressBar
+                  max={svc.requiredQuantity}
+                  segments={[
+                    { value: svc.sentQty, tone: "info" },
+                    { value: svc.receivedQty, tone: done ? "success" : "primary" },
+                  ]}
+                />
+
+                {svc.available.gated && !done && (
+                  <div className={s.note}>
+                    Solo se puede enviar lo recibido de {svc.available.prevName ?? "la etapa anterior"}.
+                  </div>
+                )}
+
+                {svc.sizeSplit && svc.sizeSplit.length > 0 && (
+                  <div className={s.chips}>
+                    {svc.sizeSplit.map((sz) => (
+                      <span key={sz.size} className="pill pill-primary"><strong>{sz.size}</strong> {sz.quantity}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
-        {initialServices.length === 0 && (
-          <div style={{ color: "var(--text-muted)", fontSize: "0.875rem" }}>
-            No hay servicios asignados.
+
+        {stages.length === 0 && (
+          <div style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
+            No hay servicios asignados a esta OP.
             {canEdit && (
               <button
                 type="button"
+                className="btn btn-secondary"
                 disabled={fillingDefaults}
+                style={{ display: "flex", marginTop: "0.75rem" }}
                 onClick={async () => {
                   setFillingDefaults(true);
                   const res = await ensureDefaultOrderServices(orderId);
                   setFillingDefaults(false);
                   if (res.error) alert(res.error);
                   else router.refresh();
-                }}
-                style={{
-                  display: "block", marginTop: "0.75rem", padding: "0.5rem 1rem",
-                  borderRadius: "6px", border: "1px solid var(--primary)", background: "transparent",
-                  color: "var(--primary)", cursor: "pointer", fontWeight: 600, fontSize: "0.82rem",
                 }}
               >
                 {fillingDefaults ? "Asignando..." : `Asignar ${DEFAULT_OP_SERVICE_NAMES.join(", ")}`}
@@ -236,66 +248,33 @@ export default function OrderServicesPanel({
       </div>
 
       {canEdit && (
-        <div style={{
-          marginTop: "1.25rem", paddingTop: "1rem", borderTop: "1px dashed var(--card-border)",
-          display: "flex", flexWrap: "wrap", gap: "0.5rem", alignItems: "flex-end",
-        }}>
-          <div style={{ flex: "1 1 180px" }}>
-            <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: "0.35rem", marginBottom: "0.3rem" }}>
-              Agregar servicio
+        <div className={s.addRow}>
+          <div className={s.field} style={{ flex: "1 1 200px" }}>
+            <label>
+              Agregar etapa
               <button
                 type="button"
                 onClick={() => { setModalOpen(true); setNewName(""); setModalError(""); }}
-                title="Nuevo servicio"
-                style={{
-                  display: "inline-flex", alignItems: "center", justifyContent: "center",
-                  width: 20, height: 20, borderRadius: "50%", border: "1px solid var(--primary)",
-                  background: "transparent", color: "var(--primary)", cursor: "pointer", padding: 0,
-                }}
+                title="Crear un servicio nuevo"
+                className="btn btn-ghost"
+                style={{ height: 22, width: 22, padding: 0, borderRadius: "50%", border: "1px solid var(--primary)", color: "var(--primary)" }}
               >
-                <Plus size={11} />
+                <Plus size={12} />
               </button>
             </label>
-            <select
-              value={addServiceId}
-              onChange={(e) => setAddServiceId(e.target.value)}
-              style={{
-                width: "100%", padding: "0.45rem", borderRadius: "6px",
-                border: "1px solid var(--card-border)", background: "var(--bg-color)", fontSize: "0.875rem",
-              }}
-            >
-              <option value="">Seleccionar...</option>
-              {available.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
+            <select value={addServiceId} onChange={(e) => setAddServiceId(e.target.value)}>
+              <option value="">Seleccionar servicio...</option>
+              {available.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
             </select>
           </div>
-          <div>
-            <label style={{ fontSize: "0.7rem", fontWeight: 700, color: "var(--text-muted)", display: "block", marginBottom: "0.3rem" }}>Cantidad</label>
-            <input
-              type="number"
-              min={1}
-              value={addQty}
-              onChange={(e) => setAddQty(Number(e.target.value))}
-              style={{
-                width: 90, padding: "0.45rem", borderRadius: "6px",
-                border: "1px solid var(--card-border)", background: "var(--bg-color)",
-              }}
-            />
+          <div className={s.field}>
+            <label>Cantidad</label>
+            <input type="number" min={1} value={addQty} onChange={(e) => setAddQty(Number(e.target.value))} style={{ width: 100 }} />
           </div>
-          <button
-            type="button"
-            onClick={handleAdd}
-            disabled={adding}
-            style={{
-              padding: "0.45rem 1rem", borderRadius: "6px", fontSize: "0.84rem", fontWeight: 600,
-              background: "var(--primary)", color: "white", border: "none",
-              cursor: adding ? "not-allowed" : "pointer", opacity: adding ? 0.7 : 1,
-            }}
-          >
+          <button type="button" className="btn btn-primary" onClick={handleAdd} disabled={adding}>
             {adding ? "..." : "Agregar"}
           </button>
-          {addError && <div style={{ width: "100%", fontSize: "0.8rem", color: "#dc2626" }}>{addError}</div>}
+          {addError && <div style={{ width: "100%", fontSize: "0.8rem", color: "var(--danger)" }}>{addError}</div>}
         </div>
       )}
     </>

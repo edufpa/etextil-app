@@ -22,6 +22,7 @@ model Company {
   molds     Mold[]
   garments  Garment[]
   pedidos   Pedido[]
+  serviceOrders ServiceOrder[]
 }
 
 model AppUser {
@@ -59,6 +60,7 @@ model Service {
   updatedAt        DateTime          @updatedAt
   OrderService     OrderService[]
   providerServices ProviderService[]
+  providerPrices   ProviderServicePrice[]
 }
 
 model Provider {
@@ -78,6 +80,8 @@ model Provider {
   providerDeliveries ProviderDelivery[]
   workAssignments   WorkAssignment[]
   services          ProviderService[]
+  prices            ProviderServicePrice[]
+  serviceOrders     ServiceOrder[]
 }
 
 model ProviderService {
@@ -153,6 +157,8 @@ model OrderService {
   deliveries       ProviderDelivery[]
   sizeSplit        OrderServiceSize[]   // desglose por talla (solo si trackBySize)
   assignments      WorkAssignment[]     // lotes enviados al taller
+  serviceOrders    ServiceOrder[]       // OS emitidas para esta etapa
+  sequence         Int                  @default(0) // orden de la etapa dentro de la OP (0 = sin secuencia)
 }
 
 model Guide {
@@ -194,6 +200,11 @@ model ProviderDelivery {
   createdAt        DateTime            @default(now())
   updatedAt        DateTime            @updatedAt
   incomings        ProviderIncoming[]  // recepciones de vuelta del taller
+  serviceOrder_id  Int?                // OS a la que pertenece esta línea
+  serviceOrder     ServiceOrder?       @relation(fields: [serviceOrder_id], references: [id], onDelete: SetNull)
+  unitPrice        Decimal?            @db.Decimal(12, 2) // tarifa congelada al emitir la OS
+
+  @@index([serviceOrder_id])
 }
 
 // Ingreso — lo que el taller nos devuelve (trabajo terminado)
@@ -374,4 +385,46 @@ model PedidoItemImage {
   data          Bytes
   updatedAt     DateTime   @updatedAt
   createdAt     DateTime   @default(now())
+}
+
+// OS — Orden de Servicio: documento que se emite a UN taller, para UN servicio de UNA OP.
+// Sus líneas (por talla) son los ProviderDelivery con serviceOrder_id. El estado
+// (EMITIDA / PARCIAL / COMPLETA) se deriva de las cantidades; solo ANULADA se guarda (voidedAt).
+model ServiceOrder {
+  id              Int                @id @default(autoincrement())
+  osNumber        String
+  company_id      Int?
+  company         Company?           @relation(fields: [company_id], references: [id])
+  orderService_id Int
+  orderService    OrderService       @relation(fields: [orderService_id], references: [id], onDelete: Cascade)
+  provider_id     Int
+  provider        Provider           @relation(fields: [provider_id], references: [id])
+  date            DateTime
+  dueDate         DateTime?
+  notes           String?
+  currency        String             @default("PEN")
+  voidedAt        DateTime?
+  voidNote        String?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  lines           ProviderDelivery[]
+
+  @@unique([company_id, osNumber])
+  @@index([orderService_id])
+  @@index([provider_id])
+}
+
+// Tarifa por prenda que cobra un taller por un servicio
+model ProviderServicePrice {
+  id          Int      @id @default(autoincrement())
+  provider_id Int
+  provider    Provider @relation(fields: [provider_id], references: [id], onDelete: Cascade)
+  service_id  Int
+  service     Service  @relation(fields: [service_id], references: [id], onDelete: Cascade)
+  price       Decimal  @db.Decimal(12, 2)
+  currency    String   @default("PEN")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([provider_id, service_id])
 }

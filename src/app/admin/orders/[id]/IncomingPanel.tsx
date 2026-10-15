@@ -14,6 +14,7 @@ type DeliveryRow = {
   date: string | Date;
   notes?: string | null;
   providerName: string;
+  osNumber?: string | null;
   incomings: Incoming[];
 };
 
@@ -130,7 +131,10 @@ export default function IncomingPanel({ orderId, serviceDeliveries }: Props) {
                       {/* OP header row */}
                       <div style={{ display: "flex", alignItems: "center", gap: "0.6rem", flexWrap: "wrap", marginBottom: "0.5rem" }}>
                         <Send size={13} style={{ color: "var(--primary)", flexShrink: 0 }} />
-                        <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>OP enviada: {d.quantity} u.</span>
+                        {d.osNumber && (
+                          <span style={{ background: "#eef2ff", color: "#3730a3", borderRadius: "6px", fontSize: "0.72rem", padding: "1px 7px", fontWeight: 800 }}>{d.osNumber}</span>
+                        )}
+                        <span style={{ fontWeight: 700, fontSize: "0.85rem" }}>Enviado: {d.quantity} u.</span>
                         {d.size && (
                           <span style={{ background: "var(--primary)", color: "white", borderRadius: "999px", fontSize: "0.72rem", padding: "1px 7px", fontWeight: 700 }}>{d.size}</span>
                         )}

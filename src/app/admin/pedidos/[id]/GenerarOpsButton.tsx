@@ -15,11 +15,12 @@ export default function GenerarOpsButton({ pedidoId, disabled }: { pedidoId: num
     setLoading(true);
     setError("");
     try {
-      const ops = await generarOPs(pedidoId);
+      const res = await generarOPs(pedidoId);
       router.refresh();
-      alert(`${ops.length} OP${ops.length !== 1 ? "s" : ""} generada${ops.length !== 1 ? "s" : ""} correctamente.`);
-    } catch (err: any) {
-      setError(err.message || "Error al generar OPs");
+      if (!res.success) setError(res.error);
+      else alert(`${res.count} OP${res.count !== 1 ? "s" : ""} generada${res.count !== 1 ? "s" : ""} correctamente.`);
+    } catch {
+      setError("Error al generar OPs. Recarga la página e inténtalo de nuevo.");
     } finally {
       setLoading(false);
     }

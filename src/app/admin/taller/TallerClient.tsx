@@ -16,6 +16,8 @@ export type TallerRow = {
   color: string;
   client: string;
   service: string;
+  /** Órdenes de Servicio (de este taller) que componen la fila. */
+  osNumbers: string[];
   cells: TallerCell[];
 };
 
@@ -52,7 +54,7 @@ export default function TallerClient({ providers, providerId, providerName, rows
     const term = q.trim().toLowerCase();
     if (!term) return rows;
     return rows.filter((r) =>
-      [r.orderNumber, r.client, r.garment, r.color, r.service].some((v) => v?.toLowerCase().includes(term))
+      [r.orderNumber, r.client, r.garment, r.color, r.service, ...r.osNumbers].some((v) => v?.toLowerCase().includes(term))
     );
   }, [rows, q]);
 
@@ -168,7 +170,7 @@ export default function TallerClient({ providers, providerId, providerName, rows
                         <Link href={`/admin/orders/${r.orderId}`} className={styles.opLink}>{r.orderNumber} <ExternalLink size={12} /></Link>
                         <span className={styles.badge}>{r.service}</span>
                       </div>
-                      <div className={styles.rowSub}>{[r.client, r.garment, r.color].filter(Boolean).join(" · ")}</div>
+                      <div className={styles.rowSub}>{[r.client, r.garment, r.color, r.osNumbers.join(", ")].filter(Boolean).join(" · ")}</div>
                     </div>
                     <button type="button" className={styles.btnSmall} onClick={() => fillRow(r)} disabled={saving}>
                       <CheckCheck size={14} /> Todo ({rowPending})

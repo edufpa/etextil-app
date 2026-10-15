@@ -7,6 +7,7 @@ import { getSessionCompanyId } from "@/lib/company";
 import { logActivity } from "@/lib/logger";
 import { attachDefaultServicesToOrder } from "@/lib/default-op-services";
 import { friendlyError, UserError } from "@/lib/errors";
+import { syncPedidoStatus } from "@/lib/pedido-status";
 
 /** Throws UserError if the OP doesn't exist or belongs to another company. */
 async function assertOrderAccess(orderId: number) {
@@ -94,7 +95,7 @@ export async function createOrder(data: {
           if (data.services.length === 0) {
             await attachDefaultServicesToOrder(tx, order.id, data.totalQuantity, { createMissing: true });
           } else {
-            for (const s of data.services) {
+            for (const [stageIdx, s] of data.services.entries()) {
               // For trackBySize services, calculate requiredQuantity from sizeSplit sum
               const reqQty =
                 s.sizeSplit && s.sizeSplit.length > 0
@@ -107,6 +108,7 @@ export async function createOrder(data: {
                   service_id: s.service_id,
                   requiredQuantity: reqQty,
                   notes: s.notes,
+                  sequence: stageIdx + 1,
                 },
               });
 
@@ -146,11 +148,12 @@ export async function deleteOrder(orderId: number) {
     await assertOrderAccess(orderId);
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      select: { orderNumber: true, garment: true, totalQuantity: true },
+      select: { orderNumber: true, garment: true, totalQuantity: true, pedido_id: true },
     });
     if (!order) return { error: "Pedido no encontrado." };
 
     await prisma.order.delete({ where: { id: orderId } });
+    await syncPedidoStatus(prisma, order.pedido_id);
 
     await logActivity("DELETE_ORDER", `Pedido eliminado: ${order.orderNumber} — ${order.garment}, ${order.totalQuantity} u.`);
     revalidatePath("/admin/orders");
@@ -197,10 +200,12 @@ export async function getOrderSummary(orderId: number) {
 export async function closeOrderManually(orderId: number) {
   try {
     await assertOrderAccess(orderId);
-    await prisma.order.update({
+    const closed = await prisma.order.update({
       where: { id: orderId },
       data: { status: "ENTREGADO" },
+      select: { pedido_id: true },
     });
+    await syncPedidoStatus(prisma, closed.pedido_id);
     revalidatePath(`/admin/orders/${orderId}`);
     revalidatePath("/admin/orders");
     return { success: true };
@@ -280,6 +285,7 @@ export async function updateOrder(
       }
 
       const newSizeMap = new Map(data.sizes.map((s) => [s.size, s.quantity]));
+      let nextSequence = Math.max(0, ...existingServices.map((e) => e.sequence)) + 1;
 
       for (const s of data.services) {
         const reqQty =
@@ -326,6 +332,7 @@ export async function updateOrder(
               requiredQuantity: reqQty,
               notes: s.notes,
               provider_id: s.provider_id ?? null,
+              sequence: nextSequence++,
             },
           });
           if (s.sizeSplit && s.sizeSplit.length > 0) {
@@ -432,8 +439,9 @@ export async function addOrderService(
     const qty = requiredQuantity > 0 ? requiredQuantity : order.totalQuantity;
     if (qty < 1) return { error: "La cantidad debe ser al menos 1." };
 
+    const last = await prisma.orderService.aggregate({ where: { order_id: orderId }, _max: { sequence: true } });
     await prisma.orderService.create({
-      data: { order_id: orderId, service_id: serviceId, requiredQuantity: qty },
+      data: { order_id: orderId, service_id: serviceId, requiredQuantity: qty, sequence: (last._max.sequence ?? 0) + 1 },
     });
 
     await logActivity("ADD_ORDER_SERVICE", `Servicio "${service.name}" agregado a OP #${orderId} (${qty} u.)`);

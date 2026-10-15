@@ -2,29 +2,16 @@ import { canAccessCompany } from "@/lib/company";
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Package, ShoppingBag } from "lucide-react";
+import { Package, ShoppingBag, Layers, ClipboardList, Info } from "lucide-react";
 import styles from "../../services/services.module.css";
 import GenerarOpsButton from "./GenerarOpsButton";
 import DeletePedidoButton from "./DeletePedidoButton";
 import PedidoFilesPanel from "@/components/pedidos/PedidoFilesPanel";
 import ItemImage from "@/components/pedidos/ItemImage";
+import { PageHeader, Card, Split, Stack, StatGrid, Stat, StatusPill, KV, EmptyState, ProgressBar } from "@/components/ui";
+import { deriveOrderDisplayStatus, piecesInWorkshop } from "@/lib/order-status";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_COLORS: Record<string, string> = {
-  BORRADOR: "#94a3b8",
-  CONFIRMADO: "#2563eb",
-  "EN PROCESO": "#7c3aed",
-  COMPLETADO: "green",
-};
-
-const OP_STATUS_COLORS: Record<string, string> = {
-  PENDIENTE: "orange",
-  "EN PROCESO": "#7c3aed",
-  "PARCIALMENTE ENTREGADO": "#2563eb",
-  ENTREGADO: "green",
-  CANCELADO: "#dc2626",
-};
 
 type Params = Promise<{ id: string }>;
 
@@ -54,7 +41,7 @@ export default async function PedidoDetailPage({ params }: { params: Params }) {
           totalQuantity: true,
           status: true,
           guides: { select: { deliveredQuantity: true } },
-          services: { select: { deliveries: { select: { quantity: true } } } },
+          services: { select: { deliveries: { select: { quantity: true, incomings: { select: { quantity: true } } } } } },
         },
         orderBy: { createdAt: "asc" },
       },
@@ -68,186 +55,135 @@ export default async function PedidoDetailPage({ params }: { params: Params }) {
     0
   );
   const opsAlreadyGenerated = pedido.ops.length > 0;
-  const statusColor = STATUS_COLORS[pedido.status] || "#94a3b8";
+  const opRows = pedido.ops.map((op) => ({
+    ...op,
+    delivered: op.guides.reduce((s, g) => s + g.deliveredQuantity, 0),
+    inShop: piecesInWorkshop(op),
+    display: deriveOrderDisplayStatus(op),
+  }));
+  const deliveredTotal = opRows.reduce((a, o) => a + o.delivered, 0);
+  const opsTotal = opRows.reduce((a, o) => a + o.totalQuantity, 0);
+  const doneOps = opRows.filter((o) => o.display === "ENTREGADO").length;
 
   return (
-    <div style={{ maxWidth: 1000 }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          <Link href="/admin/pedidos" style={{ color: "var(--text-muted)" }}>
-            <ArrowLeft size={20} />
-          </Link>
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-              <h1 style={{ fontSize: "1.35rem", fontWeight: 800 }}>
-                <ShoppingBag size={20} style={{ display: "inline", marginRight: "0.3rem", verticalAlign: "middle" }} />
-                {pedido.pedidoNumber}
-              </h1>
-              <span className={styles.badge} style={{ background: statusColor, color: "white", fontSize: "0.68rem" }}>
-                {pedido.status}
-              </span>
-            </div>
-            <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", marginTop: "0.2rem" }}>
-              {pedido.client.name} · {new Date(pedido.date).toLocaleDateString()} · {totalUnits} unidades totales
-            </div>
-            {pedido.notes && (
-              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginTop: "0.2rem", fontStyle: "italic" }}>
-                {pedido.notes}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-          {!opsAlreadyGenerated && (
-            <GenerarOpsButton pedidoId={pedido.id} />
-          )}
-          <DeletePedidoButton pedidoId={pedido.id} hasOps={opsAlreadyGenerated} />
-        </div>
-      </div>
-
-      {/* Items del pedido */}
-      <div style={{ marginBottom: "2rem" }}>
-        <h2 style={{ fontSize: "0.9rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.05em", marginBottom: "0.75rem" }}>
-          Items del Pedido ({pedido.items.length})
-        </h2>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
-          {pedido.items.map((item, idx) => {
-            const itemTotal = item.sizes.reduce((s, sz) => s + sz.quantity, 0);
-            return (
-              <div key={item.id} style={{
-                background: "var(--card-bg)", border: "1px solid var(--card-border)",
-                borderRadius: "var(--radius)", boxShadow: "var(--shadow-xs)",
-                padding: "0.85rem 1rem", display: "flex", gap: "1rem", alignItems: "flex-start",
-              }}>
-                <ItemImage
-                  itemId={item.id}
-                  version={item.image ? new Date(item.image.updatedAt).getTime() : null}
-                  label={`${item.garment} — ${item.color}`}
-                />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: "0.72rem", color: "var(--text-subtle)", fontWeight: 600 }}>#{idx + 1}{item.sku ? ` · ${item.sku}` : ""}</div>
-                      <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{item.garment}</span>
-                      <span style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginLeft: "0.5rem" }}>— {item.color}</span>
-                    </div>
-                    <span className="pill pill-primary" style={{ fontSize: "0.8rem" }}>{itemTotal} u.</span>
-                  </div>
-                  <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
-                    {item.sizes.map((sz) => (
-                      <span key={sz.id} className="pill">
-                        <strong>{sz.size}</strong> {sz.quantity}
-                      </span>
-                    ))}
-                  </div>
-                  {item.notes && (
-                    <div style={{ fontSize: "0.78rem", color: "var(--gray-600)", marginTop: "0.55rem", whiteSpace: "pre-line", background: "var(--gray-50)", borderRadius: "var(--radius-md)", padding: "0.5rem 0.65rem" }}>
-                      {item.notes}
-                    </div>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      <PedidoFilesPanel
-        pedidoId={pedido.id}
-        files={pedido.files.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() }))}
+    <div>
+      <PageHeader
+        icon={ShoppingBag}
+        title={`Pedido ${pedido.pedidoNumber}`}
+        badge={<StatusPill status={pedido.status} />}
+        subtitle={`${pedido.client.name} · ${new Date(pedido.date).toLocaleDateString("es-PE")}`}
+        breadcrumbs={[{ label: "Producción" }, { label: "Pedidos", href: "/admin/pedidos" }, { label: pedido.pedidoNumber }]}
+        actions={
+          <>
+            {!opsAlreadyGenerated && <GenerarOpsButton pedidoId={pedido.id} />}
+            <DeletePedidoButton pedidoId={pedido.id} hasOps={opsAlreadyGenerated} />
+          </>
+        }
       />
 
-      {/* OPs generadas */}
-      <div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
-          <h2 style={{ fontSize: "0.9rem", fontWeight: 700, textTransform: "uppercase", color: "var(--text-muted)", letterSpacing: "0.05em" }}>
-            OPs Generadas ({pedido.ops.length})
-          </h2>
-          {opsAlreadyGenerated && (
-            <GenerarOpsButton pedidoId={pedido.id} disabled />
-          )}
-        </div>
+      <StatGrid>
+        <Stat label="Ítems" value={pedido.items.length} tone="primary" hint="prendas distintas" />
+        <Stat label="Unidades" value={totalUnits.toLocaleString("es-PE")} tone="info" />
+        <Stat label="OPs generadas" value={pedido.ops.length} tone={opsAlreadyGenerated ? "success" : "warning"} hint={opsAlreadyGenerated ? `${doneOps} entregada${doneOps === 1 ? "" : "s"}` : "aún sin generar"} />
+        <Stat label="Despachado" value={opsAlreadyGenerated ? `${deliveredTotal.toLocaleString("es-PE")} / ${opsTotal.toLocaleString("es-PE")}` : "—"} tone="success" />
+      </StatGrid>
 
-        {pedido.ops.length === 0 ? (
-          <div style={{
-            background: "var(--card-bg)", border: "2px dashed var(--card-border)",
-            borderRadius: "var(--radius)", padding: "2.5rem", textAlign: "center",
-            color: "var(--text-muted)", fontSize: "0.9rem",
-          }}>
-            Todavía no se generaron OPs para este pedido.
-            <br />
-            <span style={{ fontSize: "0.8rem" }}>Usá el botón "Generar OPs" para crear una OP por cada item.</span>
-          </div>
-        ) : (
-          <div className={styles.tableContainer}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th>OP</th>
-                  <th>Prenda / Color</th>
-                  <th>Total</th>
-                  <th>Entregado</th>
-                  <th>Estado</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {pedido.ops.map((op) => {
-                  const delivered = op.guides.reduce((s, g) => s + g.deliveredQuantity, 0);
-                  const sentToWorkshop = op.services.reduce(
-                    (s, svc) => s + svc.deliveries.reduce((a, d) => a + d.quantity, 0), 0
-                  );
-                  const displayStatus =
-                    op.status === "CANCELADO" ? "CANCELADO"
-                    : op.status === "ENTREGADO" || op.status === "CERRADO" ? "ENTREGADO"
-                    : delivered >= op.totalQuantity ? "ENTREGADO"
-                    : delivered > 0 ? "PARCIALMENTE ENTREGADO"
-                    : sentToWorkshop > 0 ? "EN PROCESO"
-                    : "PENDIENTE";
-                  const opColor = OP_STATUS_COLORS[displayStatus] || "orange";
-
-                  return (
-                    <tr key={op.id}>
-                      <td><strong>{op.orderNumber}</strong></td>
-                      <td>
-                        {op.garment}
-                        <span style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginLeft: "0.4rem" }}>{op.color}</span>
-                      </td>
-                      <td>{op.totalQuantity}</td>
-                      <td style={{ color: delivered >= op.totalQuantity ? "green" : "orange", fontWeight: 600 }}>
-                        {delivered}
-                      </td>
-                      <td>
-                        <span className={styles.badge} style={{ background: opColor, color: "white", fontSize: "0.68rem" }}>
-                          {displayStatus === "EN PROCESO" ? "PROCESO" : displayStatus}
-                        </span>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", gap: "0.4rem" }}>
-                          <Link
-                            href={`/admin/orders/${op.id}`}
-                            style={{
-                              display: "inline-flex", alignItems: "center", gap: "0.3rem",
-                              padding: "0.25rem 0.6rem", borderRadius: "6px", fontSize: "0.75rem",
-                              fontWeight: 600, border: "1px solid var(--card-border)",
-                              background: "var(--card-bg)", color: "var(--text-color)", textDecoration: "none",
-                            }}
-                          >
-                            <Package size={13} /> Ver
-                          </Link>
+      <Split>
+        <Stack>
+          <Card title="Ítems del pedido" icon={Layers} count={pedido.items.length}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {pedido.items.map((item, idx) => {
+                const itemTotal = item.sizes.reduce((sum, sz) => sum + sz.quantity, 0);
+                return (
+                  <div key={item.id} style={{ border: "1px solid var(--gray-200)", borderRadius: "var(--radius)", padding: "0.85rem 1rem", display: "flex", gap: "1rem", alignItems: "flex-start" }}>
+                    <ItemImage
+                      itemId={item.id}
+                      version={item.image ? new Date(item.image.updatedAt).getTime() : null}
+                      label={`${item.garment} — ${item.color}`}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "0.75rem" }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: "0.72rem", color: "var(--text-subtle)", fontWeight: 600 }}>#{idx + 1}{item.sku ? ` · ${item.sku}` : ""}</div>
+                          <span style={{ fontWeight: 700, fontSize: "0.95rem" }}>{item.garment}</span>
+                          <span style={{ color: "var(--text-muted)", fontSize: "0.875rem", marginLeft: "0.5rem" }}>— {item.color}</span>
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                        <span className="pill pill-primary">{itemTotal} u.</span>
+                      </div>
+                      <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap", marginTop: "0.5rem" }}>
+                        {item.sizes.map((sz) => (
+                          <span key={sz.id} className="pill"><strong>{sz.size}</strong> {sz.quantity}</span>
+                        ))}
+                      </div>
+                      {item.notes && (
+                        <div style={{ fontSize: "0.78rem", color: "var(--gray-600)", marginTop: "0.55rem", whiteSpace: "pre-line", background: "var(--gray-50)", borderRadius: "var(--radius-md)", padding: "0.5rem 0.65rem" }}>
+                          {item.notes}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+
+          <Card title="Órdenes de producción" icon={ClipboardList} count={pedido.ops.length} flush={opsAlreadyGenerated}>
+            {!opsAlreadyGenerated ? (
+              <EmptyState icon={ClipboardList} title="Todavía no se generaron OPs">
+                Usa “Generar OPs” para crear una OP por cada ítem del pedido.
+              </EmptyState>
+            ) : (
+              <div className={styles.tableContainer} style={{ border: "none", boxShadow: "none", borderRadius: 0, maxHeight: "none" }}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr><th>OP</th><th>Prenda / Color</th><th style={{ minWidth: 140 }}>Avance</th><th>Estado</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {opRows.map((op) => (
+                      <tr key={op.id}>
+                        <td><Link href={`/admin/orders/${op.id}`} style={{ fontWeight: 800, color: "var(--primary-700)" }}>{op.orderNumber}</Link></td>
+                        <td>
+                          {op.garment}
+                          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{op.color}</div>
+                        </td>
+                        <td>
+                          <ProgressBar max={op.totalQuantity} segments={[{ value: op.delivered + op.inShop, tone: "info" }, { value: op.delivered, tone: "success" }]} />
+                          <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: 4 }}>
+                            {op.delivered} despachadas · {op.inShop} en taller · {op.totalQuantity} total
+                          </div>
+                        </td>
+                        <td><StatusPill status={op.display} /></td>
+                        <td style={{ textAlign: "right" }}>
+                          <Link href={`/admin/orders/${op.id}`} className="btn btn-secondary" style={{ height: 30, fontSize: "0.78rem" }}>
+                            <Package size={13} /> Abrir
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+        </Stack>
+
+        <Stack>
+          <Card title="Datos del pedido" icon={Info}>
+            <KV
+              items={[
+                { label: "Cliente", value: pedido.client.name },
+                { label: "Fecha", value: new Date(pedido.date).toLocaleDateString("es-PE") },
+                { label: "Estado", value: <StatusPill status={pedido.status} /> },
+                { label: "Notas", value: pedido.notes || "—", wide: true },
+              ]}
+            />
+          </Card>
+          <PedidoFilesPanel
+            pedidoId={pedido.id}
+            files={pedido.files.map((f) => ({ ...f, createdAt: f.createdAt.toISOString() }))}
+          />
+        </Stack>
+      </Split>
     </div>
   );
 }

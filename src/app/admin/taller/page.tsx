@@ -31,6 +31,7 @@ export default async function TallerPage({ searchParams }: { searchParams: Searc
           size: true,
           quantity: true,
           orderService_id: true,
+          serviceOrder: { select: { osNumber: true, voidedAt: true } },
           incomings: { select: { quantity: true } },
           orderService: {
             select: {
@@ -54,10 +55,13 @@ export default async function TallerPage({ searchParams }: { searchParams: Searc
             color: o.color,
             client: o.client?.name ?? "",
             service: d.orderService.service.name,
+            osNumbers: [],
             cells: [],
           };
           map.set(d.orderService_id, row);
         }
+        const osn = d.serviceOrder?.osNumber;
+        if (osn && !row.osNumbers.includes(osn)) row.osNumbers.push(osn);
         const size = d.size ?? "";
         let cell = row.cells.find((c) => c.size === size);
         if (!cell) { cell = { size, sent: 0, received: 0 }; row.cells.push(cell); }

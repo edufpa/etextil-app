@@ -38,7 +38,7 @@ export async function attachDefaultServicesToOrder(
   });
   const existingIds = new Set(existing.map((e) => e.service_id));
 
-  for (const defaultName of DEFAULT_OP_SERVICE_NAMES) {
+  for (const [stageIdx, defaultName] of DEFAULT_OP_SERVICE_NAMES.entries()) {
     let service = findServiceByDefaultName(allServices, defaultName);
 
     if (!service && options?.createMissing) {
@@ -62,6 +62,7 @@ export async function attachDefaultServicesToOrder(
         order_id: orderId,
         service_id: service.id,
         requiredQuantity: totalQuantity,
+        sequence: stageIdx + 1,
       },
     });
     existingIds.add(service.id);

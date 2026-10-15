@@ -56,6 +56,10 @@
   --info-bg: #dbeafe;
   --info-fg: #1e40af;
 
+  /* Alias heredados (usados por pantallas antiguas) */
+  --bg-color: var(--gray-50);
+  --text-color: var(--gray-800);
+
   --input-bg: #ffffff;
   --input-border: var(--gray-300);
 
